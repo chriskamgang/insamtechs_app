@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/course_provider.dart';
 import '../providers/library_provider.dart';
 import '../utils/translation_helper.dart';
 
@@ -30,8 +31,12 @@ class _DigitalLibraryScreenState extends State<DigitalLibraryScreen>
   }
 
   Future<void> _loadLibraryData() async {
+    final courseProvider = context.read<CourseProvider>();
+    await courseProvider.loadCategories();
+
+    // Also load fascicule categories
     final libraryProvider = context.read<LibraryProvider>();
-    await libraryProvider.refreshLibrary();
+    await libraryProvider.loadFasciculeCategories();
   }
 
   @override
@@ -75,8 +80,8 @@ class _DigitalLibraryScreenState extends State<DigitalLibraryScreen>
   }
 
   Widget _buildBooksTab() {
-    return Consumer<LibraryProvider>(
-      builder: (context, libraryProvider, child) {
+    return Consumer<CourseProvider>(
+      builder: (context, courseProvider, child) {
         return Column(
           children: [
             // Barre de recherche
@@ -84,7 +89,7 @@ class _DigitalLibraryScreenState extends State<DigitalLibraryScreen>
 
             // Contenu principal
             Expanded(
-              child: _buildBooksContent(libraryProvider),
+              child: _buildBooksContent(courseProvider),
             ),
           ],
         );
@@ -148,31 +153,19 @@ class _DigitalLibraryScreenState extends State<DigitalLibraryScreen>
     );
   }
 
-  Widget _buildBooksContent(LibraryProvider libraryProvider) {
-    if (libraryProvider.isLoadingLibrary) {
+  Widget _buildBooksContent(courseProvider) {
+    if (courseProvider.state == CourseLoadingState.loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (libraryProvider.hasLibraryError) {
+    if (courseProvider.state == CourseLoadingState.error) {
       return _buildErrorWidget(
-        libraryProvider.libraryError!,
-        () => libraryProvider.loadLibraryContent(),
+        courseProvider.errorMessage ?? 'Erreur de chargement',
+        () => courseProvider.loadCategories(),
       );
     }
 
-    final libraryContent = libraryProvider.libraryContent;
-    if (libraryContent == null) {
-      return _buildEmptyWidget('Aucune donnée de bibliothèque disponible');
-    }
-
-    // Gérer la structure de l'API: {'categories': {'current_page': 1, 'data': [...]}}
-    List<dynamic> categories = [];
-    if (libraryContent['categories'] is Map<String, dynamic>) {
-      categories = (libraryContent['categories'] as Map<String, dynamic>)['data'] as List<dynamic>? ?? [];
-    } else if (libraryContent['categories'] is List<dynamic>) {
-      categories = libraryContent['categories'] as List<dynamic>;
-    }
-
+    final categories = courseProvider.categories;
     if (categories.isEmpty) {
       return _buildEmptyWidget('Aucune catégorie de livres disponible');
     }
@@ -190,50 +183,45 @@ class _DigitalLibraryScreenState extends State<DigitalLibraryScreen>
     );
   }
 
-  Widget _buildFasciculesContent(LibraryProvider libraryProvider) {
-    if (libraryProvider.isLoadingStudyFields) {
+  Widget _buildFasciculesContent(libraryProvider) {
+    if (libraryProvider.state == LibraryLoadingState.loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (libraryProvider.hasStudyFieldsError) {
+    if (libraryProvider.state == LibraryLoadingState.error) {
       return _buildErrorWidget(
-        libraryProvider.studyFieldsError!,
-        () => libraryProvider.loadStudyFields(),
+        libraryProvider.errorMessage ?? 'Erreur de chargement',
+        () => libraryProvider.loadFasciculeCategories(),
       );
     }
 
-    final studyFields = libraryProvider.studyFields;
+    final categories = libraryProvider.libraryCategories;
 
-    if (studyFields.isEmpty) {
-      return _buildEmptyWidget('Aucune filière d\'étude disponible');
+    if (categories.isEmpty) {
+      return _buildEmptyWidget('Aucune catégorie de fascicules disponible');
     }
 
     return RefreshIndicator(
       onRefresh: _loadLibraryData,
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: studyFields.length,
+        itemCount: categories.length,
         itemBuilder: (context, index) {
-          final studyField = studyFields[index];
-          return _buildStudyFieldCard(studyField);
+          final category = categories[index];
+          return _buildStudyFieldCard(category);
         },
       ),
     );
   }
 
-  Widget _buildBookCategoryCard(Map<String, dynamic> category) {
+  Widget _buildBookCategoryCard(category) {
     final title = TranslationHelper.getTranslatedText(
-      category['intitule'],
+      category.name,
       defaultText: 'Catégorie',
     );
-    final description = TranslationHelper.getTranslatedText(
-      category['description'],
-      defaultText: '',
-    );
-    final formations = category['formations'] as List<dynamic>? ?? [];
-    final booksCount = formations.length;
-    final slug = category['slug'] ?? '';
-    final imageUrl = category['image'] ?? category['img'] ?? '';
+    final description = 'Catégorie de livres';
+    final booksCount = 0; // Placeholder - would need actual count from API
+    final slug = category.slug;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -273,7 +261,7 @@ class _DigitalLibraryScreenState extends State<DigitalLibraryScreen>
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: _buildCategoryImage(imageUrl, slug),
+                  child: _buildCategoryImage('', slug),
                 ),
               ),
               const SizedBox(width: 16),
@@ -324,17 +312,14 @@ class _DigitalLibraryScreenState extends State<DigitalLibraryScreen>
     );
   }
 
-  Widget _buildStudyFieldCard(Map<String, dynamic> studyField) {
+  Widget _buildStudyFieldCard(category) {
     final title = TranslationHelper.getTranslatedText(
-      studyField['intitule'] ?? studyField['nom'],
+      category.name,
       defaultText: 'Filière',
     );
-    final description = TranslationHelper.getTranslatedText(
-      studyField['description'],
-      defaultText: '',
-    );
-    final fasciculesCount = studyField['fascicules_count'] ?? 0;
-    final slug = studyField['slug'] ?? '';
+    final description = 'Type de fascicules';
+    final fasciculesCount = 0; // Placeholder - would need actual count from API
+    final slug = category.slug;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -346,7 +331,7 @@ class _DigitalLibraryScreenState extends State<DigitalLibraryScreen>
         onTap: () {
           Navigator.pushNamed(
             context,
-            '/fascicules-category',
+            '/fascicules-series',
             arguments: {
               'slug': slug,
               'title': title,

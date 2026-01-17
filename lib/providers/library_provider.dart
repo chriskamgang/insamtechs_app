@@ -1,229 +1,276 @@
 import 'package:flutter/foundation.dart';
+import '../models/library_item.dart';
+import '../models/library_category.dart';
+import '../models/fascicule_filiere.dart';
+import '../models/fascicule_serie.dart';
 import '../services/library_service.dart';
+
+enum LibraryLoadingState { idle, loading, loaded, error }
 
 class LibraryProvider with ChangeNotifier {
   final LibraryService _libraryService = LibraryService();
 
-  // État de la bibliothèque
-  Map<String, dynamic>? _libraryContent;
-  bool _isLoadingLibrary = false;
-  String? _libraryError;
+  List<LibraryItem> _libraryItems = [];
+  List<LibraryCategory> _libraryCategories = [];
+  List<FasciculeFiliere> _filieres = [];
+  List<FasciculeSerie> _series = [];
+  LibraryLoadingState _state = LibraryLoadingState.idle;
+  String? _errorMessage;
 
-  // État des livres
-  List<dynamic> _books = [];
-  bool _isLoadingBooks = false;
-  String? _booksError;
-  String? _currentBookCategory;
+  List<LibraryItem> get libraryItems => _libraryItems;
+  List<LibraryCategory> get libraryCategories => _libraryCategories;
+  List<FasciculeFiliere> get filieres => _filieres;
+  List<FasciculeSerie> get series => _series;
+  LibraryLoadingState get state => _state;
+  String? get errorMessage => _errorMessage;
 
-  // État des filières
-  List<dynamic> _studyFields = [];
-  bool _isLoadingStudyFields = false;
-  String? _studyFieldsError;
+  Future<void> loadLibraryItems({
+    String? category,
+    String? searchQuery,
+    String? type,
+    bool refresh = false,
+  }) async {
+    if (_state == LibraryLoadingState.loading && !refresh) return;
 
-  // État des fascicules
-  List<dynamic> _fascicules = [];
-  bool _isLoadingFascicules = false;
-  String? _fasciculesError;
-  String? _currentFasciculeCategory;
-
-  // Getters pour la bibliothèque
-  Map<String, dynamic>? get libraryContent => _libraryContent;
-  bool get isLoadingLibrary => _isLoadingLibrary;
-  String? get libraryError => _libraryError;
-  bool get hasLibraryError => _libraryError != null;
-
-  // Getters pour les livres
-  List<dynamic> get books => List.unmodifiable(_books);
-  bool get isLoadingBooks => _isLoadingBooks;
-  String? get booksError => _booksError;
-  bool get hasBooksError => _booksError != null;
-  String? get currentBookCategory => _currentBookCategory;
-
-  // Getters pour les filières
-  List<dynamic> get studyFields => List.unmodifiable(_studyFields);
-  bool get isLoadingStudyFields => _isLoadingStudyFields;
-  String? get studyFieldsError => _studyFieldsError;
-  bool get hasStudyFieldsError => _studyFieldsError != null;
-
-  // Getters pour les fascicules
-  List<dynamic> get fascicules => List.unmodifiable(_fascicules);
-  bool get isLoadingFascicules => _isLoadingFascicules;
-  String? get fasciculesError => _fasciculesError;
-  bool get hasFasciculesError => _fasciculesError != null;
-  String? get currentFasciculeCategory => _currentFasciculeCategory;
-
-  /// Charger le contenu de la bibliothèque
-  Future<void> loadLibraryContent() async {
-    _setLoadingLibrary(true);
-    _clearLibraryError();
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
 
     try {
-      _libraryContent = await _libraryService.getLibraryContent();
-      notifyListeners();
+      _libraryItems = await _libraryService.fetchLibraryItems(
+        category: category,
+        searchQuery: searchQuery,
+        type: type,
+      );
+      _state = LibraryLoadingState.loaded;
     } catch (e) {
-      _setLibraryError('Erreur lors du chargement de la bibliothèque: ${e.toString()}');
-    } finally {
-      _setLoadingLibrary(false);
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
     }
+
+    notifyListeners();
   }
 
-  /// Charger les livres par catégorie
-  Future<void> loadBooksByCategory(String categorySlug) async {
-    _setLoadingBooks(true);
-    _clearBooksError();
+  Future<void> loadLibraryItemById(String id) async {
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
 
     try {
-      _books = await _libraryService.getBooksByCategory(categorySlug);
-      _currentBookCategory = categorySlug;
-      notifyListeners();
+      final item = await _libraryService.fetchLibraryItemById(id);
+      _libraryItems = [item]; // Update with single item
+      _state = LibraryLoadingState.loaded;
     } catch (e) {
-      _setBooksError('Erreur lors du chargement des livres: ${e.toString()}');
-    } finally {
-      _setLoadingBooks(false);
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
     }
+
+    notifyListeners();
   }
 
-  /// Charger les filières d'étude
-  Future<void> loadStudyFields() async {
-    _setLoadingStudyFields(true);
-    _clearStudyFieldsError();
+  Future<void> searchLibraryItems(String query) async {
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
 
     try {
-      _studyFields = await _libraryService.getStudyFields();
-      notifyListeners();
+      _libraryItems = await _libraryService.searchLibraryItems(query);
+      _state = LibraryLoadingState.loaded;
     } catch (e) {
-      _setStudyFieldsError('Erreur lors du chargement des filières: ${e.toString()}');
-    } finally {
-      _setLoadingStudyFields(false);
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
     }
+
+    notifyListeners();
   }
 
-  /// Charger les fascicules par catégorie
+  Future<void> loadLibraryCategories() async {
+    if (_state == LibraryLoadingState.loading) return;
+
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      _libraryCategories = await _libraryService.fetchLibraryCategories();
+      _state = LibraryLoadingState.loaded;
+    } catch (e) {
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> loadFilieres() async {
+    if (_state == LibraryLoadingState.loading) return;
+
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      _filieres = await _libraryService.fetchFasciculeFilieres();
+      _state = LibraryLoadingState.loaded;
+    } catch (e) {
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> loadLibraryItemsByCategory(String categorySlug) async {
+    if (_state == LibraryLoadingState.loading) return;
+
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      _libraryItems = await _libraryService.fetchLibraryItemsByCategory(categorySlug);
+      _state = LibraryLoadingState.loaded;
+    } catch (e) {
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> loadSeriesByFiliere(String filiereSlug) async {
+    if (_state == LibraryLoadingState.loading) return;
+
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      _series = await _libraryService.fetchSeriesByFiliere(filiereSlug);
+      _state = LibraryLoadingState.loaded;
+    } catch (e) {
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
+    }
+
+    notifyListeners();
+  }
+
+  Future<void> loadCategoriesBySerie(String serieSlug) async {
+    if (_state == LibraryLoadingState.loading) return;
+
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      _libraryCategories = await _libraryService.fetchCategoriesBySerie(serieSlug);
+      _state = LibraryLoadingState.loaded;
+    } catch (e) {
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
+    }
+
+    notifyListeners();
+  }
+
   Future<void> loadFasciculesByCategory(String categorySlug) async {
-    _setLoadingFascicules(true);
-    _clearFasciculesError();
+    if (_state == LibraryLoadingState.loading) return;
+
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
+    notifyListeners();
 
     try {
-      _fascicules = await _libraryService.getFasciculesByCategory(categorySlug);
-      _currentFasciculeCategory = categorySlug;
-      notifyListeners();
+      _libraryItems = await _libraryService.fetchFasciculesByCategory(categorySlug);
+      _state = LibraryLoadingState.loaded;
     } catch (e) {
-      _setFasciculesError('Erreur lors du chargement des fascicules: ${e.toString()}');
-    } finally {
-      _setLoadingFascicules(false);
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
+    }
+
+    notifyListeners();
+  }
+
+  Future<bool> downloadDocument(String documentId) async {
+    try {
+      bool success = await _libraryService.downloadDocument(documentId);
+      if (success) {
+        // Update download count locally
+        final docIdInt = int.tryParse(documentId);
+        if (docIdInt != null) {
+          final index = _libraryItems.indexWhere((item) => item.id == docIdInt);
+          if (index != -1) {
+            _libraryItems[index] = _libraryItems[index].copyWith(
+              nbTelechargements: (_libraryItems[index].nbTelechargements ?? 0) + 1
+            );
+            notifyListeners();
+          }
+        }
+      }
+      return success;
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      return false;
     }
   }
 
-  /// Actualiser toutes les données de la bibliothèque
-  Future<void> refreshLibrary() async {
-    await Future.wait([
-      loadLibraryContent(),
-      loadStudyFields(),
-    ]);
+  Future<bool> markAsViewed(String documentId) async {
+    try {
+      bool success = await _libraryService.markAsViewed(documentId);
+      if (success) {
+        // Update view count locally
+        final docIdInt = int.tryParse(documentId);
+        if (docIdInt != null) {
+          final index = _libraryItems.indexWhere((item) => item.id == docIdInt);
+          if (index != -1) {
+            _libraryItems[index] = _libraryItems[index].copyWith(
+              nbVues: (_libraryItems[index].nbVues ?? 0) + 1
+            );
+            notifyListeners();
+          }
+        }
+      }
+      return success;
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 
-  /// Vider toutes les données (lors de la déconnexion)
-  void clearAllData() {
-    _libraryContent = null;
-    _books.clear();
-    _studyFields.clear();
-    _fascicules.clear();
-    _currentBookCategory = null;
-    _currentFasciculeCategory = null;
-
-    _clearLibraryError();
-    _clearBooksError();
-    _clearStudyFieldsError();
-    _clearFasciculesError();
-
+  void resetState() {
+    _state = LibraryLoadingState.idle;
+    _errorMessage = null;
     notifyListeners();
   }
 
-  /// Rechercher dans les livres
-  List<dynamic> searchBooks(String query) {
-    if (query.trim().isEmpty) return _books;
-
-    return _books.where((book) {
-      final title = book['titre']?.toString().toLowerCase() ?? '';
-      final author = book['auteur']?.toString().toLowerCase() ?? '';
-      final description = book['description']?.toString().toLowerCase() ?? '';
-      final searchQuery = query.toLowerCase();
-
-      return title.contains(searchQuery) ||
-             author.contains(searchQuery) ||
-             description.contains(searchQuery);
-    }).toList();
+  // Method to get a specific library item by ID
+  LibraryItem? getItemById(int id) {
+    try {
+      return _libraryItems.firstWhere((item) => item.id == id);
+    } catch (e) {
+      return null;
+    }
   }
 
-  /// Rechercher dans les fascicules
-  List<dynamic> searchFascicules(String query) {
-    if (query.trim().isEmpty) return _fascicules;
+  // Load fascicule categories (type = 3)
+  Future<void> loadFasciculeCategories({bool refresh = false}) async {
+    if (_state == LibraryLoadingState.loading && !refresh) return;
 
-    return _fascicules.where((fascicule) {
-      final title = fascicule['titre']?.toString().toLowerCase() ?? '';
-      final description = fascicule['description']?.toString().toLowerCase() ?? '';
-      final searchQuery = query.toLowerCase();
-
-      return title.contains(searchQuery) ||
-             description.contains(searchQuery);
-    }).toList();
-  }
-
-  // Méthodes privées pour la gestion d'état
-
-  void _setLoadingLibrary(bool loading) {
-    _isLoadingLibrary = loading;
+    _state = LibraryLoadingState.loading;
+    _errorMessage = null;
     notifyListeners();
-  }
 
-  void _setLibraryError(String error) {
-    _libraryError = error;
+    try {
+      _libraryCategories = await _libraryService.fetchFasciculeCategories();
+      _state = LibraryLoadingState.loaded;
+    } catch (e) {
+      _state = LibraryLoadingState.error;
+      _errorMessage = e.toString();
+    }
+
     notifyListeners();
-  }
-
-  void _clearLibraryError() {
-    _libraryError = null;
-  }
-
-  void _setLoadingBooks(bool loading) {
-    _isLoadingBooks = loading;
-    notifyListeners();
-  }
-
-  void _setBooksError(String error) {
-    _booksError = error;
-    notifyListeners();
-  }
-
-  void _clearBooksError() {
-    _booksError = null;
-  }
-
-  void _setLoadingStudyFields(bool loading) {
-    _isLoadingStudyFields = loading;
-    notifyListeners();
-  }
-
-  void _setStudyFieldsError(String error) {
-    _studyFieldsError = error;
-    notifyListeners();
-  }
-
-  void _clearStudyFieldsError() {
-    _studyFieldsError = null;
-  }
-
-  void _setLoadingFascicules(bool loading) {
-    _isLoadingFascicules = loading;
-    notifyListeners();
-  }
-
-  void _setFasciculesError(String error) {
-    _fasciculesError = error;
-    notifyListeners();
-  }
-
-  void _clearFasciculesError() {
-    _fasciculesError = null;
   }
 }
