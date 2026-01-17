@@ -610,7 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Blue background section with hat icon and favorite icon
+            // Course image section with favorite icon
             Container(
               height: 100,
               decoration: BoxDecoration(
@@ -619,17 +619,50 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Stack(
                 children: [
-                  // Hat icon (school icon)
-                  Positioned(
-                    top: 12,
-                    left: 0,
-                    right: 0,
-                    child: Icon(
-                      Icons.school,
-                      size: 30,
-                      color: Colors.white,
+                  // Course image
+                  if (course.imageUrl != null && course.imageUrl!.isNotEmpty)
+                    Positioned.fill(
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                        child: Image.network(
+                          course.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            // Fallback to icon if image fails to load
+                            return Container(
+                              color: const Color(0xFF1E3A8A),
+                              child: const Center(
+                                child: Icon(
+                                  Icons.school,
+                                  size: 30,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            );
+                          },
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              color: const Color(0xFF1E3A8A),
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    )
+                  else
+                    // Fallback icon if no image URL
+                    const Center(
+                      child: Icon(
+                        Icons.school,
+                        size: 30,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
                   // Favorite icon
                   Positioned(
                     top: 8,

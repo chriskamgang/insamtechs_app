@@ -148,9 +148,149 @@ Route::get('/fascicules_filiere/{id}', [FasciculeController::class, 'getByFilier
 
 ---
 
+---
+
+### 7. Fascicules ne s'affichent pas (affichent "0 fascicule")
+**Problème:** Toutes les catégories de fascicules affichaient "0 fascicule" alors qu'il y en a dans la base de données
+
+**Cause:** Le backend filtrait les fascicules avec `whereHas('categorie.domaine', function ($query) { $query->where('is_active', true); })`, mais beaucoup de catégories de fascicules ont `domaine_id = null`, ce qui éliminait TOUS les fascicules.
+
+**Solution:** Modification de `getFasciculesByCategorie()` dans `FasciculeController.php` (lignes 251-257):
+- Supprimé le filtrage par `domaine.is_active`
+- Ajouté filtrage par `type_formation_id = 3` pour s'assurer que ce sont bien des fascicules
+- Maintenant retourne correctement les fascicules filtrés seulement par `categorie_id`
+
+**Fichiers modifiés:**
+- `insamtechs_backend/app/Http/Controllers/Api/FasciculeController.php`
+
+**Status:** ✅ RÉSOLU - Committé et poussé
+
+---
+
+### 8. Publicités (Estuaire Emploi, Achats, Visa) ne s'affichent pas
+**Problème:** Le carrousel de publicités est vide, ne montre pas les applications Estuaire
+
+**Cause:** Aucune publicité n'existe dans la base de données - l'API retourne `"advertisements": []`
+
+**Solution:** Création de 3 publicités dans la base de données locale:
+1. **Estuaire Emploi** - App de recherche d'emploi
+2. **Estuaire Achats** - App de shopping en ligne
+3. **Estuaire Visa** - App de traitement de visa
+
+**Code Flutter déjà en place:**
+- Carrousel implémenté dans `home_screen.dart` (lignes 209-363)
+- Auto-scroll toutes les 5 secondes
+- Cliquable pour afficher les détails
+- Indicateurs de page animés
+
+**Action requise sur production:**
+Il faut créer ces mêmes publicités sur le serveur de production via Tinker:
+```bash
+php artisan tinker --execute="
+App\Models\Advertisement::create([
+  'title' => 'Estuaire Emploi',
+  'description' => 'Trouvez votre emploi de rêve',
+  'image_url' => 'URL_IMAGE_ESTUAIRE_EMPLOI',
+  'app_name' => 'Estuaire Emploi',
+  'download_url' => 'https://play.google.com/store/apps/details?id=com.estuaire.emploi',
+  'features' => json_encode(['Offres d\'emploi', 'CV en ligne']),
+  'is_active' => true,
+  'order' => 1
+]);
+# Répéter pour Estuaire Achats et Estuaire Visa
+"
+```
+
+**Status:** ✅ CODE PRÊT - Publicités créées localement, à créer sur production
+
+---
+
+### 9. Accès aux vidéos restreint
+**Problème:** L'utilisateur rapporte que seules les premières vidéos sont accessibles, pas toutes
+
+**Investigation:**
+- ✅ Backend `getVideosForChapter()` retourne TOUTES les vidéos quand `platform=mobile` (ligne 273)
+- ✅ Backend `showFormationBySlug()` charge TOUTES les vidéos sans filtrage (ligne 125)
+- ✅ Flutter app envoie correctement `platform=mobile` et `all=true` (course_service.dart:634-639)
+- ✅ UI ne filtre PAS les vidéos basé sur `isFree` (course_detail_screen.dart)
+- ✅ Toute la logique backend est déjà committée et poussée
+
+**Cause probable:**
+- Le serveur de production n'a pas été redémarré après les changements
+- Cache Laravel ou serveur web non vidé
+- L'app mobile utilise une version cachée des données
+
+**Solution requise par l'admin backend:**
+```bash
+# Sur le serveur de production
+cd /path/to/backend
+git pull origin main
+php artisan cache:clear
+php artisan config:clear
+php artisan route:clear
+php artisan optimize
+# Redémarrer le serveur web (nginx/apache)
+sudo systemctl restart nginx  # ou apache2
+```
+
+**Status:** ✅ CODE CORRIGÉ - Nécessite déploiement/redémarrage production
+
+---
+
 ## 🎯 Prochaines Étapes
 
-1. Tester les corrections dans l'app mobile
-2. Investiguer et corriger le problème "Formation invalide"
-3. Contacter l'admin backend pour créer les routes fascicules
-4. Ajouter des messages d'erreur plus informatifs pour l'utilisateur
+1. ✅ Tester les corrections dans l'app mobile
+2. ✅ Investiguer et corriger le problème "Formation invalide" - RÉSOLU
+3. ✅ Corriger le problème des fascicules - RÉSOLU
+4. ⏳ **URGENT** - Actions requises sur le serveur de production:
+
+   **A. Déployer les changements backend:**
+   ```bash
+   cd /path/to/backend
+   git pull origin main
+   php artisan cache:clear
+   php artisan config:clear
+   php artisan route:clear
+   php artisan optimize
+   sudo systemctl restart nginx  # ou apache2
+   ```
+
+   **B. Créer les publicités Estuaire:**
+   ```bash
+   php artisan tinker --execute="
+   App\Models\Advertisement::create([
+     'title' => 'Estuaire Emploi',
+     'description' => 'Trouvez votre emploi de rêve avec Estuaire Emploi',
+     'image_url' => 'https://via.placeholder.com/800x400/4CAF50/FFFFFF?text=Estuaire+Emploi',
+     'app_name' => 'Estuaire Emploi',
+     'download_url' => 'https://play.google.com/store/apps/details?id=com.estuaire.emploi',
+     'features' => json_encode(['Offres d\'emploi', 'CV en ligne', 'Candidatures rapides']),
+     'is_active' => true,
+     'order' => 1
+   ]);
+   App\Models\Advertisement::create([
+     'title' => 'Estuaire Achats',
+     'description' => 'Faites vos achats en ligne facilement',
+     'image_url' => 'https://via.placeholder.com/800x400/2196F3/FFFFFF?text=Estuaire+Achats',
+     'app_name' => 'Estuaire Achats',
+     'download_url' => 'https://play.google.com/store/apps/details?id=com.estuaire.achats',
+     'features' => json_encode(['Livraison rapide', 'Paiement sécurisé', 'Promotions']),
+     'is_active' => true,
+     'order' => 2
+   ]);
+   App\Models\Advertisement::create([
+     'title' => 'Estuaire Visa',
+     'description' => 'Obtenez votre visa rapidement',
+     'image_url' => 'https://via.placeholder.com/800x400/FF9800/FFFFFF?text=Estuaire+Visa',
+     'app_name' => 'Estuaire Visa',
+     'download_url' => 'https://play.google.com/store/apps/details?id=com.estuaire.visa',
+     'features' => json_encode(['Traitement rapide', 'Support 24/7', 'Suivi en temps réel']),
+     'is_active' => true,
+     'order' => 3
+   ]);
+   echo '✓ Publicités créées';
+   "
+   ```
+
+5. 💡 Ajouter des messages d'erreur plus informatifs pour l'utilisateur
+6. 💡 Remplacer les images placeholder par de vraies images pour les publicités
