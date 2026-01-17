@@ -27,8 +27,8 @@ class Exam {
     return Exam(
       id: json['id'] ?? 0,
       formationId: json['formation_id'] ?? 0,
-      titre: Map<String, String>.from(json['titre'] ?? {'fr': '', 'en': ''}),
-      description: Map<String, String>.from(json['description'] ?? {'fr': '', 'en': ''}),
+      titre: _parseStringMap(json['titre']),
+      description: _parseStringMap(json['description']),
       dureeMinutes: json['duree_minutes'] ?? 60,
       notePassage: double.parse(json['note_passage']?.toString() ?? '0'),
       actif: json['actif'] ?? true,
@@ -42,6 +42,20 @@ class Exam {
           ? DateTime.parse(json['updated_at'])
           : null,
     );
+  }
+
+  /// Helper pour parser les Maps avec des valeurs potentiellement null
+  static Map<String, String> _parseStringMap(dynamic value) {
+    if (value == null) return {'fr': '', 'en': ''};
+    if (value is Map) {
+      return Map<String, String>.from(
+        value.map((key, val) => MapEntry(key.toString(), val?.toString() ?? ''))
+      );
+    }
+    if (value is String) {
+      return {'fr': value, 'en': value};
+    }
+    return {'fr': '', 'en': ''};
   }
 
   Map<String, dynamic> toJson() {
@@ -83,7 +97,7 @@ class Question {
     return Question(
       id: json['id'] ?? 0,
       examenId: json['examen_id'] ?? 0,
-      question: Map<String, String>.from(json['question'] ?? {'fr': '', 'en': ''}),
+      question: Exam._parseStringMap(json['question']),
       type: json['type'] ?? 'qcm',
       points: json['points'] ?? 1,
       ordre: json['ordre'] ?? 1,
@@ -125,7 +139,7 @@ class QuestionReponse {
     return QuestionReponse(
       id: json['id'] ?? 0,
       questionId: json['question_id'] ?? 0,
-      reponse: Map<String, String>.from(json['reponse'] ?? {'fr': '', 'en': ''}),
+      reponse: Exam._parseStringMap(json['reponse']),
       estCorrect: json['est_correct'] ?? false,
       ordre: json['ordre'] ?? 1,
     );

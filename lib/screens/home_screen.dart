@@ -192,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildSectionHeader('Notre Bibliothèque', '/library'),
                       _buildLibrarySection(screenWidth),
 
-                      _buildSectionHeader('Nos Meilleures Épreuves', '/exam-detail'),
+                      _buildSectionHeader('Nos Meilleures Épreuves', '/courses'),
                       _buildBestExamsSection(screenWidth),
                     ],
                   ),
@@ -908,7 +908,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final formationId = exam['formation_id'] ?? exam['formationId'] ?? exam['id'] ?? 0;
     final formationTitle = _extractString(exam['formation_titre'] ?? exam['formation_title'] ?? exam['titre']);
 
-    print('🔍 [HomeScreen] Extracted - title: $title, formationId: $formationId, formationTitle: $formationTitle');
+    // Extraire l'image de la formation
+    String? imageUrl;
+    final formation = exam['formation'];
+    if (formation != null && formation is Map) {
+      final img = formation['img'] ?? formation['image'];
+      if (img != null && img.toString().isNotEmpty) {
+        final imgPath = img.toString();
+        if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
+          imageUrl = imgPath;
+        } else {
+          String cleanPath = imgPath;
+          if (cleanPath.startsWith('/')) cleanPath = cleanPath.substring(1);
+          if (!cleanPath.startsWith('storage/')) cleanPath = 'storage/$cleanPath';
+          imageUrl = 'https://admin.insamtechs.com/$cleanPath';
+        }
+      }
+    }
+
+    print('🔍 [HomeScreen] Extracted - title: $title, formationId: $formationId, formationTitle: $formationTitle, imageUrl: $imageUrl');
 
     return Container(
       width: screenWidth * 0.5,
@@ -948,38 +966,78 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         },
         borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.picture_as_pdf,
-                size: 40,
-                color: Color(0xFF1E3A8A),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Image de la formation ou icône par défaut
+            Expanded(
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                child: imageUrl != null
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
+                            child: const Icon(
+                              Icons.quiz,
+                              size: 40,
+                              color: Color(0xFF1E3A8A),
+                            ),
+                          );
+                        },
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            color: Colors.grey[200],
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                color: Color(0xFF1E3A8A),
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                    : Container(
+                        color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
+                        child: const Icon(
+                          Icons.quiz,
+                          size: 40,
+                          color: Color(0xFF1E3A8A),
+                        ),
+                      ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+            ),
+            // Titre et type
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Épreuve',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Épreuve',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

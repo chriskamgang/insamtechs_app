@@ -28,7 +28,7 @@ class AuthResponse {
 
 @JsonSerializable()
 class LoginRequest {
-  @JsonKey(name: 'tel_1')
+  @JsonKey(name: 'tel_1', toJson: _ensureString)
   final String telephone;
   final String password;
 
@@ -36,6 +36,9 @@ class LoginRequest {
     required this.telephone,
     required this.password,
   });
+
+  // Convertisseur personnalisé pour s'assurer que tel_1 est une string
+  static String _ensureString(String value) => value;
 
   factory LoginRequest.fromJson(Map<String, dynamic> json) =>
       _$LoginRequestFromJson(json);
