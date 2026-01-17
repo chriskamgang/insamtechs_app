@@ -76,6 +76,7 @@ CourseCategory _$CourseCategoryFromJson(Map<String, dynamic> json) =>
     CourseCategory(
       id: (json['id'] as num).toInt(),
       intitule: json['intitule'],
+      img: json['img'] as String?,
       type: (json['type'] as num).toInt(),
       date: json['date'] as String,
       slug: json['slug'] as String,
@@ -87,6 +88,7 @@ Map<String, dynamic> _$CourseCategoryToJson(CourseCategory instance) =>
     <String, dynamic>{
       'id': instance.id,
       'intitule': instance.intitule,
+      'img': instance.img,
       'type': instance.type,
       'date': instance.date,
       'slug': instance.slug,
@@ -97,7 +99,7 @@ Map<String, dynamic> _$CourseCategoryToJson(CourseCategory instance) =>
 FormationType _$FormationTypeFromJson(Map<String, dynamic> json) =>
     FormationType(
       id: (json['id'] as num).toInt(),
-      intitule: json['intitule'] as String,
+      intitule: json['intitule'],
       createdAt: json['created_at'] as String?,
       updatedAt: json['updated_at'] as String?,
     );

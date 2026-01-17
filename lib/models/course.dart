@@ -95,7 +95,7 @@ class Course {
 
       // Construct full URL for backend images
       // Backend serves images from storage/app/public, accessible via storage symlink
-      const baseUrl = 'http://192.168.1.58:8000';
+      const baseUrl = 'http://192.168.1.180:8001';
 
       // Clean the path by removing any leading slash or 'storage/' prefix
       String cleanPath = img!;
@@ -130,6 +130,7 @@ class Course {
 class CourseCategory {
   final int id;
   final dynamic intitule; // Can be Map or String
+  final String? img;
   final int type;
   final String date;
   final String slug;
@@ -141,6 +142,7 @@ class CourseCategory {
   CourseCategory({
     required this.id,
     required this.intitule,
+    this.img,
     required this.type,
     required this.date,
     required this.slug,
@@ -159,12 +161,37 @@ class CourseCategory {
     }
     return 'Catégorie';
   }
+
+  // Image URL with fallback - construct full URL from backend
+  String? get imageUrl {
+    if (img != null && img!.isNotEmpty) {
+      // If the image path is already a full URL, return as is
+      if (img!.startsWith('http://') || img!.startsWith('https://')) {
+        return img!;
+      }
+
+      // Use production backend URL
+      const baseUrl = 'https://admin.insamtechs.com';
+
+      // Clean the path by removing any leading slash or 'storage/' prefix
+      String cleanPath = img!;
+      if (cleanPath.startsWith('/')) {
+        cleanPath = cleanPath.substring(1);
+      }
+      if (!cleanPath.startsWith('storage/')) {
+        cleanPath = 'storage/$cleanPath';
+      }
+
+      return '$baseUrl/$cleanPath';
+    }
+    return null;
+  }
 }
 
 @JsonSerializable()
 class FormationType {
   final int id;
-  final String intitule;
+  final dynamic intitule; // Can be String or Map<String, String>
   @JsonKey(name: 'created_at')
   final String? createdAt;
   @JsonKey(name: 'updated_at')
@@ -179,6 +206,15 @@ class FormationType {
 
   factory FormationType.fromJson(Map<String, dynamic> json) => _$FormationTypeFromJson(json);
   Map<String, dynamic> toJson() => _$FormationTypeToJson(this);
+
+  String get name {
+    if (intitule is Map) {
+      return (intitule as Map)['fr']?.toString() ?? (intitule as Map)['en']?.toString() ?? 'Formation';
+    } else if (intitule is String) {
+      return intitule as String;
+    }
+    return 'Formation';
+  }
 }
 
 @JsonSerializable()
