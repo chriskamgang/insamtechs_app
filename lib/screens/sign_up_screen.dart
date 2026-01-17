@@ -16,11 +16,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _prenomController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _aboutController = TextEditingController();
+  final _skillsController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
+  final List<String> _skills = [];
 
   Future<void> _signUp() async {
     setState(() {
@@ -34,6 +37,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       prenom: _prenomController.text.trim(),
       email: _emailController.text.trim(),
       telephone: _phoneController.text.trim(),
+      about: _aboutController.text.trim(),
+      skills: _skills,
       password: _passwordController.text,
       passwordConfirmation: _confirmPasswordController.text,
     );
@@ -69,12 +74,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  void _addSkill() {
+    if (_skillsController.text.trim().isNotEmpty) {
+      setState(() {
+        _skills.add(_skillsController.text.trim());
+        _skillsController.clear();
+      });
+    }
+  }
+
+  void _removeSkill(int index) {
+    setState(() {
+      _skills.removeAt(index);
+    });
+  }
+
   @override
   void dispose() {
     _nomController.dispose();
     _prenomController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _aboutController.dispose();
+    _skillsController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -333,6 +355,148 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           return null;
                         },
                       ),
+                    ],
+                  ),
+
+                  SizedBox(height: screenHeight * 0.025),
+
+                  // À propos Field
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'À propos de vous (optionnel)',
+                        style: TextStyle(
+                          fontSize: screenWidth * 0.04,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: _aboutController,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: 'Parlez-nous un peu de vous...',
+                          hintStyle: TextStyle(color: Colors.grey[400]),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF1E3A8A),
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  SizedBox(height: screenHeight * 0.025),
+
+                  // Compétences Field
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Vos compétences (optionnel)',
+                        style: TextStyle(
+                          fontSize: screenWidth * 0.04,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _skillsController,
+                              decoration: InputDecoration(
+                                hintText: 'Ex: Flutter, Design, etc.',
+                                hintStyle: TextStyle(color: Colors.grey[400]),
+                                filled: true,
+                                fillColor: Colors.grey[50],
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 16,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF1E3A8A),
+                                    width: 1,
+                                  ),
+                                ),
+                              ),
+                              onFieldSubmitted: (_) => _addSkill(),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: _addSkill,
+                            icon: const Icon(Icons.add_circle),
+                            color: const Color(0xFF1E3A8A),
+                            iconSize: 32,
+                          ),
+                        ],
+                      ),
+                      if (_skills.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: _skills.asMap().entries.map((entry) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    entry.value,
+                                    style: const TextStyle(
+                                      color: Color(0xFF1E3A8A),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  GestureDetector(
+                                    onTap: () => _removeSkill(entry.key),
+                                    child: const Icon(
+                                      Icons.close,
+                                      size: 16,
+                                      color: Color(0xFF1E3A8A),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
                     ],
                   ),
 

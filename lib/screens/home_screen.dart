@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/course_provider.dart';
-import '../providers/enrollment_provider.dart';
-import '../providers/wishlist_provider.dart';
+import '../providers/exam_provider.dart';
 import '../providers/library_provider.dart';
 import '../models/course.dart';
-import '../utils/translation_helper.dart';
-import '../widgets/wishlist_button.dart';
+import '../models/library_item.dart';
+import '../models/advertisement.dart';
+import '../services/advertisement_service.dart';
+import 'advertisement_detail_screen.dart';
+import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,333 +20,511 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  final TextEditingController _searchController = TextEditingController();
+  int _currentAdIndex = 0;
+  late PageController _pageController;
+  Timer? _adTimer;
+  List<Advertisement> _advertisements = [];
+  bool _adsLoading = true;
+  final AdvertisementService _advertisementService = AdvertisementService();
 
   @override
   void initState() {
-    print('🏠 [HomeScreen] initState() - Initializing home screen');
     super.initState();
-    // Defer loading to after the first frame to avoid setState during build
+    _pageController = PageController();
+    // Charger les catégories, livres, épreuves et publicités dès que l'écran est construit
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadUserEnrollments();
-      _loadLibraryContent();
+      Provider.of<CourseProvider>(context, listen: false).loadCategories();
+      // Charger les livres de la bibliothèque (limité aux 5 premiers)
+      Provider.of<LibraryProvider>(context, listen: false).loadLibraryItems(type: 'livre');
+      // Charger les meilleures épreuves (limité aux 5 premières)
+      Provider.of<ExamProvider>(context, listen: false).loadFeaturedExams(limit: 5);
+      // Charger les publicités depuis l'API
+      _loadAdvertisements();
     });
   }
 
-  Future<void> _loadUserEnrollments() async {
-    print('🏠 [HomeScreen] _loadUserEnrollments() - Starting to load user enrollments');
-    final authProvider = context.read<AuthProvider>();
-    final userId = authProvider.user?.id;
-    if (authProvider.isAuthenticated && userId != null) {
-      print('🏠 [HomeScreen] _loadUserEnrollments() - User authenticated, loading data for user ID: $userId');
-      final enrollmentProvider = context.read<EnrollmentProvider>();
-      final wishlistProvider = context.read<WishlistProvider>();
+  Future<void> _loadAdvertisements() async {
+    setState(() {
+      _adsLoading = true;
+    });
 
-      try {
-        await Future.wait([
-          enrollmentProvider.refreshUserEnrollments(userId),
-          wishlistProvider.loadUserWishlist(userId),
-        ]);
-        print('✅ [HomeScreen] _loadUserEnrollments() - Successfully loaded user enrollments and wishlist');
-      } catch (e) {
-        print('❌ [HomeScreen] _loadUserEnrollments() - Error loading user data: ${e.toString()}');
+    try {
+      final ads = await _advertisementService.getActiveAdvertisements();
+      setState(() {
+        _advertisements = ads;
+        _adsLoading = false;
+      });
+
+      // Démarrer le timer seulement si on a des publicités
+      if (_advertisements.isNotEmpty) {
+        _startAdTimer();
       }
-    } else {
-      print('⚠️ [HomeScreen] _loadUserEnrollments() - User not authenticated, skipping enrollment load');
+    } catch (e) {
+      print('Error loading ads: $e');
+      setState(() {
+        _adsLoading = false;
+      });
     }
   }
 
-  Future<void> _loadLibraryContent() async {
-    print('🏠 [HomeScreen] _loadLibraryContent() - Loading library content');
-    try {
-      await context.read<LibraryProvider>().loadLibraryContent();
-      print('✅ [HomeScreen] _loadLibraryContent() - Successfully loaded library content');
-    } catch (e) {
-      print('❌ [HomeScreen] _loadLibraryContent() - Error loading library: ${e.toString()}');
-    }
+  void _startAdTimer() {
+    _adTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_pageController.hasClients) {
+        int nextPage = (_currentAdIndex + 1) % _advertisements.length;
+        _pageController.animateToPage(
+          nextPage,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _adTimer?.cancel();
+    _pageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.dark,
-        ),
-        automaticallyImplyLeading: false,
-        title: Consumer<AuthProvider>(
-          builder: (context, authProvider, child) {
-            final user = authProvider.user;
-            final userName = user?.fullName ?? 'Étudiant';
-
-            return Row(
-              children: [
-                Text(
-                  'Bienvenue, ',
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.05,
-                    color: Colors.black,
-                    fontWeight: FontWeight.normal,
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    userName,
-                    style: TextStyle(
-                      fontSize: screenWidth * 0.05,
-                      color: const Color(0xFF1E3A8A),
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+        title: const Text('Bienvenue'),
         actions: [
           IconButton(
-            icon: Icon(
-              Icons.settings,
-              color: Colors.grey[400],
-              size: 28,
-            ),
+            icon: const Icon(Icons.settings),
             onPressed: () {
-              print('🏠 [HomeScreen] Settings button pressed - Navigating to settings');
+              // Navigate to settings
               Navigator.pushNamed(context, '/settings');
             },
           ),
           IconButton(
-            icon: Icon(
-              Icons.notifications_outlined,
-              color: Colors.grey[400],
-              size: 28,
-            ),
+            icon: const Icon(Icons.notifications),
             onPressed: () {
-              print('🏠 [HomeScreen] Notifications button pressed - Navigating to notifications');
+              // Navigate to notifications
               Navigator.pushNamed(context, '/notifications');
             },
           ),
         ],
       ),
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: RefreshIndicator(
-        onRefresh: () async {
-          await context.read<CourseProvider>().refresh();
-          // Also refresh user enrollments and wishlist if authenticated
-          if (mounted) {
-            final authProvider = context.read<AuthProvider>();
-            final userId = authProvider.user?.id;
-            if (authProvider.isAuthenticated && userId != null) {
-              await Future.wait([
-                context.read<EnrollmentProvider>().refreshUserEnrollments(userId),
-                context.read<WishlistProvider>().refreshWishlist(userId),
-              ]);
-            }
+      body: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          final user = authProvider.user;
+          String userName = 'Utilisateur';
+          if (user != null) {
+            userName = '${user.prenom} ${user.nom}';
           }
-        },
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
-          child: Column(
+
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(height: screenHeight * 0.02),
+              // Header with user info
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: const Color(0xFF1E3A8A),
+                      child: Text(
+                        userName.substring(0, 1).toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Bonjour $userName !',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E3A8A),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-              // Search Bar
-              _buildSearchBar(screenWidth),
+              // Search bar
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Rechercher...',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: Colors.grey[100],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
 
-              SizedBox(height: screenHeight * 0.03),
+              const SizedBox(height: 16),
 
-              // Categories
-              _buildCategoriesSection(screenWidth),
+              // Advertisement Carousel
+              _buildAdvertisementCarousel(screenWidth, screenHeight),
 
-              SizedBox(height: screenHeight * 0.02),
+              const SizedBox(height: 16),
 
-              SizedBox(height: screenHeight * 0.01),
+              // Sections with "Voir tout" buttons
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader('Catégories', '/courses-categories'),
+                      _buildCategoriesSection(screenWidth),
 
-              // My Enrolled Courses
-              _buildMyCoursesSection(screenWidth, screenHeight),
+                      _buildSectionHeader('Cours Populaires', '/courses'),
+                      _buildPopularCoursesSection(screenWidth),
 
-              SizedBox(height: screenHeight * 0.03),
+                      _buildSectionHeader('Notre Bibliothèque', '/library'),
+                      _buildLibrarySection(screenWidth),
 
-              // Featured Courses
-              _buildFeaturedCoursesSection(screenWidth, screenHeight),
-
-              SizedBox(height: screenHeight * 0.03),
-
-              // Notre bibliothèque
-              _buildLibrarySection(screenWidth, screenHeight),
-
-              SizedBox(height: screenHeight * 0.03),
-
-              // Nos meilleures épreuves
-              _buildBestExamsSection(screenWidth, screenHeight),
-
-              SizedBox(height: screenHeight * 0.02),
+                      _buildSectionHeader('Nos Meilleures Épreuves', '/exam-detail'),
+                      _buildBestExamsSection(screenWidth),
+                    ],
+                  ),
+                ),
+              ),
             ],
-          ),
-        ),
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNavigationBar(screenWidth),
-    );
-  }
-
-  Widget _buildSearchBar(double screenWidth) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: TextField(
-        controller: _searchController,
-        decoration: InputDecoration(
-          hintText: 'Rechercher des cours...',
-          hintStyle: TextStyle(
-            color: Colors.grey[500],
-            fontSize: screenWidth * 0.04,
-          ),
-          prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: Icon(Icons.clear, color: Colors.grey[500]),
-                  onPressed: () {
-                    _searchController.clear();
-                    context.read<CourseProvider>().loadCourses(refresh: true);
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        ),
-        onSubmitted: (query) {
-          if (query.trim().isNotEmpty) {
-            context.read<CourseProvider>().searchCourses(query);
-            // Navigate to courses screen with search results
-            Navigator.pushNamed(context, '/courses');
-          }
+          );
         },
       ),
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
-  Widget _buildCategoriesSection(double screenWidth) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+  Widget _buildAdvertisementCarousel(double screenWidth, double screenHeight) {
+    // Si les publicités sont en cours de chargement
+    if (_adsLoading) {
+      return Container(
+        height: screenHeight * 0.22,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // Si aucune publicité n'est disponible
+    if (_advertisements.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      height: screenHeight * 0.22,
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentAdIndex = index;
+              });
+            },
+            itemCount: _advertisements.length,
+            itemBuilder: (context, index) {
+              final ad = _advertisements[index];
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AdvertisementDetailScreen(
+                        advertisement: ad,
+                      ),
+                    ),
+                  );
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Stack(
+                      children: [
+                        // Background Image
+                        Positioned.fill(
+                          child: Image.network(
+                            ad.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: const Color(0xFF1E3A8A),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.image_not_supported,
+                                    size: 60,
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        // Gradient Overlay
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.7),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Content
+                        Positioned(
+                          bottom: 16,
+                          left: 16,
+                          right: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                ad.appName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                ad.title,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  fontSize: 14,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // Indicators
+          Positioned(
+            bottom: 8,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                _advertisements.length,
+                (index) => Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: _currentAdIndex == index ? 24 : 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4),
+                    color: _currentAdIndex == index
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, String route) {
+    if (title == 'Catégories') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Catégories',
-              style: TextStyle(
-                fontSize: screenWidth * 0.05,
+              title,
+              style: const TextStyle(
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.black87,
+              ),
+            ),
+            Row(
+              children: [
+                IconButton(
+                  icon: Icon(Icons.refresh, size: 20),
+                  onPressed: () {
+                    Provider.of<CourseProvider>(context, listen: false).loadCategories();
+                  },
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, route);
+                  },
+                  child: const Text('Voir tout'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    } else {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
             TextButton(
               onPressed: () {
-                Navigator.pushNamed(context, '/courses');
+                Navigator.pushNamed(context, route);
               },
-              child: Text(
-                'Voir tout',
-                style: TextStyle(
-                  color: const Color(0xFF1E3A8A),
-                  fontSize: screenWidth * 0.035,
-                ),
-              ),
+              child: const Text('Voir tout'),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Consumer<CourseProvider>(
-          builder: (context, courseProvider, child) {
-            if (courseProvider.isLoading) {
-              return const SizedBox(
-                height: 80,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
+      );
+    }
+  }
 
-            if (courseProvider.hasError) {
-              return SizedBox(
-                height: 80,
-                child: Center(
-                  child: Text(
-                    'Erreur: ${courseProvider.errorMessage}',
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              );
-            }
+  Widget _buildCategoriesSection(double screenWidth) {
+    return Consumer<CourseProvider>(
+      builder: (context, courseProvider, child) {
+        // Force le rechargement des catégories si elles sont vides
+        if (courseProvider.categories.isEmpty && courseProvider.state != CourseLoadingState.loading) {
+          courseProvider.loadCategories();
+        }
 
-            return SizedBox(
-              height: 80,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: courseProvider.categories.length,
-                itemBuilder: (context, index) {
-                  final category = courseProvider.categories[index];
-                  return _buildCategoryCard(category, screenWidth);
-                },
+        final categories = courseProvider.categories;
+
+        if (courseProvider.state == CourseLoadingState.loading && categories.isEmpty) {
+          return const SizedBox(
+            height: 100,
+            child: Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF1E3A8A),
               ),
-            );
-          },
-        ),
-      ],
+            ),
+          );
+        }
+
+        if (categories.isEmpty) {
+          return const SizedBox(
+            height: 100,
+            child: Center(
+              child: Text('Aucune catégorie disponible'),
+            ),
+          );
+        }
+
+        return SizedBox(
+          height: 100,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: categories.length,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.only(left: 16.0),
+                child: _buildCategoryCard(categories[index], screenWidth),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
   Widget _buildCategoryCard(CourseCategory category, double screenWidth) {
     return Container(
-      width: screenWidth * 0.25,
-      margin: const EdgeInsets.only(right: 12),
+      width: screenWidth * 0.4,
+      margin: const EdgeInsets.only(right: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: InkWell(
         onTap: () {
-          context.read<CourseProvider>().filterByCategory(category.slug);
-          Navigator.pushNamed(context, '/courses');
+          // Navigate to category screen
+          Navigator.pushNamed(
+            context,
+            '/courses-by-category',
+            arguments: {
+              'slug': category.slug,
+              'title': category.name,
+            },
+          );
         },
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E3A8A).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                _getCategoryIcon(category.name),
-                size: 28,
+                Icons.school, // University hat icon
+                size: 30,
                 color: const Color(0xFF1E3A8A),
               ),
-              const SizedBox(height: 4),
-              Text(
-                category.name,
-                style: TextStyle(
-                  fontSize: screenWidth * 0.025,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E3A8A),
+              const SizedBox(height: 6),
+              Flexible(
+                child: Text(
+                  category.name,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -354,105 +533,64 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  IconData _getCategoryIcon(String categoryName) {
-    switch (categoryName.toLowerCase()) {
-      case 'développement web':
-      case 'web development':
-        return Icons.code;
-      case 'marketing digital':
-      case 'digital marketing':
-        return Icons.trending_up;
-      case 'design graphique':
-      case 'graphic design':
-        return Icons.palette;
-      default:
-        return Icons.school;
-    }
-  }
+  Widget _buildPopularCoursesSection(double screenWidth) {
+    return Consumer<CourseProvider>(
+      builder: (context, courseProvider, child) {
+        final courses = courseProvider.courses.take(4).toList(); // Take first 4 courses
 
-  Widget _buildFeaturedCoursesSection(double screenWidth, double screenHeight) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Cours Populaires',
-              style: TextStyle(
-                fontSize: screenWidth * 0.05,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+        if (courseProvider.state == CourseLoadingState.loading && courses.isEmpty) {
+          return const SizedBox(
+            height: 200,
+            child: Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF1E3A8A),
               ),
             ),
-            TextButton(
-              onPressed: () {
-                Navigator.pushNamed(context, '/courses');
-              },
-              child: Text(
-                'Voir tout',
-                style: TextStyle(
-                  color: const Color(0xFF1E3A8A),
-                  fontSize: screenWidth * 0.035,
-                ),
-              ),
+          );
+        }
+
+        if (courses.isEmpty) {
+          return const SizedBox(
+            height: 200,
+            child: Center(
+              child: Text('Aucun cours disponible'),
             ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Consumer<CourseProvider>(
-          builder: (context, courseProvider, child) {
-            if (courseProvider.isLoading) {
-              return SizedBox(
-                height: screenHeight * 0.3,
-                child: const Center(child: CircularProgressIndicator()),
-              );
-            }
+          );
+        }
 
-            if (courseProvider.hasError) {
-              return SizedBox(
-                height: screenHeight * 0.3,
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Erreur: ${courseProvider.errorMessage}',
-                        style: const TextStyle(color: Colors.red),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () => courseProvider.refresh(),
-                        child: const Text('Réessayer'),
-                      ),
-                    ],
-                  ),
-                ),
+        return SizedBox(
+          height: 200,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: courses.length,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.only(left: 16.0),
+                child: _buildCourseCard(courses[index], screenWidth),
               );
-            }
-
-            return SizedBox(
-              height: screenHeight * 0.3,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: courseProvider.featuredCourses.length,
-                itemBuilder: (context, index) {
-                  final course = courseProvider.featuredCourses[index];
-                  return _buildCourseCard(course, screenWidth, screenHeight);
-                },
-              ),
-            );
-          },
-        ),
-      ],
+            },
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildCourseCard(Course course, double screenWidth, double screenHeight) {
+  Widget _buildCourseCard(Course course, double screenWidth) {
     return Container(
-      width: screenWidth * 0.7,
+      width: screenWidth * 0.6,
       margin: const EdgeInsets.only(right: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: InkWell(
         onTap: () {
           Navigator.pushNamed(
@@ -468,115 +606,224 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           );
         },
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.1),
-                spreadRadius: 1,
-                blurRadius: 10,
-                offset: const Offset(0, 3),
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Blue background section with hat icon and favorite icon
+            Container(
+              height: 100,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A8A),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Course Image
-              Stack(
+              child: Stack(
                 children: [
-                  Container(
-                    height: screenHeight * 0.15,
-                    decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                      color: Colors.grey[200],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                      child: course.imageUrl != null
-                          ? Image.network(
-                              course.imageUrl!,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return _buildPlaceholderImage(course.title, screenHeight * 0.15);
-                              },
-                            )
-                          : _buildPlaceholderImage(course.title, screenHeight * 0.15),
+                  // Hat icon (school icon)
+                  Positioned(
+                    top: 12,
+                    left: 0,
+                    right: 0,
+                    child: Icon(
+                      Icons.school,
+                      size: 30,
+                      color: Colors.white,
                     ),
                   ),
-                  // Wishlist Button
+                  // Favorite icon
                   Positioned(
                     top: 8,
                     right: 8,
-                    child: WishlistButton(
-                      formationId: course.id,
-                      size: 20,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(
+                        Icons.bookmark_border,
+                        size: 16,
+                        color: const Color(0xFF1E3A8A),
+                      ),
                     ),
                   ),
                 ],
               ),
-
-              // Course Info
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            // Title section below the blue background
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    course.title,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    course.instructor,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
                     children: [
-                      Text(
-                        course.title,
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.04,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      Icon(
+                        Icons.star,
+                        size: 12,
+                        color: Colors.amber[600],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(width: 2),
                       Text(
-                        course.instructor,
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.03,
-                          color: Colors.grey[600],
+                        course.rating.toStringAsFixed(1),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
                         ),
-                      ),
-                      const Spacer(),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.star,
-                                color: Colors.amber,
-                                size: screenWidth * 0.04,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                course.rating.toString(),
-                                style: TextStyle(
-                                  fontSize: screenWidth * 0.035,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            '${course.price}€',
-                            style: TextStyle(
-                              fontSize: screenWidth * 0.04,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF1E3A8A),
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLibrarySection(double screenWidth) {
+    return Consumer<LibraryProvider>(
+      builder: (context, libraryProvider, child) {
+        // Utiliser les vrais livres de la bibliothèque
+        final libraryItems = libraryProvider.libraryItems.take(5).toList();
+
+        // Afficher un indicateur de chargement pendant le chargement
+        if (libraryProvider.state == LibraryLoadingState.loading && libraryItems.isEmpty) {
+          return const SizedBox(
+            height: 150,
+            child: Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF1E3A8A),
+              ),
+            ),
+          );
+        }
+
+        // Afficher un message si aucun livre n'est disponible
+        if (libraryItems.isEmpty) {
+          return const SizedBox(
+            height: 150,
+            child: Center(
+              child: Text('Aucun livre disponible'),
+            ),
+          );
+        }
+
+        return SizedBox(
+          height: 150,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: libraryItems.length,
+            itemBuilder: (context, index) {
+              final item = libraryItems[index];
+              return Padding(
+                padding: const EdgeInsets.only(left: 16.0),
+                child: _buildLibraryCard(item, screenWidth),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLibraryCard(LibraryItem libraryItem, double screenWidth) {
+    // Utiliser le type du document de la bibliothèque
+    String docType = libraryItem.type;
+    IconData icon = Icons.menu_book; // Icône par défaut pour les livres
+
+    // Déterminer l'icône basée sur le type
+    if (docType.toLowerCase().contains('fascicule')) {
+      icon = Icons.article;
+    } else if (docType.toLowerCase().contains('livre')) {
+      icon = Icons.menu_book;
+    }
+
+    return Container(
+      width: screenWidth * 0.5,
+      margin: const EdgeInsets.only(right: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () {
+          // Ouvrir directement le livre PDF
+          if (libraryItem.link != null && libraryItem.link!.isNotEmpty) {
+            Navigator.pushNamed(
+              context,
+              '/pdf-viewer',
+              arguments: {
+                'url': libraryItem.link,
+                'title': libraryItem.title,
+              },
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('PDF non disponible pour "${libraryItem.title}"'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 40,
+                color: const Color(0xFF1E3A8A),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                libraryItem.title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                docType,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey[600],
                 ),
               ),
             ],
@@ -586,89 +833,183 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPlaceholderImage(String title, double height) {
-    return Container(
-      width: double.infinity,
-      height: height,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF1E3A8A).withOpacity(0.7),
-            const Color(0xFF3B82F6).withOpacity(0.7),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.school,
-              color: Colors.white,
-              size: 40,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+  Widget _buildBestExamsSection(double screenWidth) {
+    return Consumer<ExamProvider>(
+      builder: (context, examProvider, child) {
+        // Debug: Afficher les données brutes
+        print('🔍 [HomeScreen] Featured exams raw: ${examProvider.featuredExams}');
+        print('🔍 [HomeScreen] Featured exams type: ${examProvider.featuredExams.runtimeType}');
+
+        // Utiliser les vraies épreuves en vedette
+        final exams = examProvider.featuredExams;
+
+        // Afficher un indicateur de chargement pendant le chargement
+        if (examProvider.isLoadingFeatured) {
+          return const SizedBox(
+            height: 150,
+            child: Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF1E3A8A),
               ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-          ],
+          );
+        }
+
+        // Afficher un message si aucune épreuve n'est disponible
+        if (exams.isEmpty) {
+          return const SizedBox(
+            height: 150,
+            child: Center(
+              child: Text('Aucune épreuve disponible'),
+            ),
+          );
+        }
+
+        return SizedBox(
+          height: 150,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: exams.length,
+            itemBuilder: (context, index) {
+              try {
+                final exam = exams[index];
+                print('🔍 [HomeScreen] Building exam card for index $index: $exam');
+                return Padding(
+                  padding: const EdgeInsets.only(left: 16.0),
+                  child: _buildExamCard(exam, screenWidth),
+                );
+              } catch (e) {
+                print('❌ [HomeScreen] Error building exam card: $e');
+                return const SizedBox.shrink();
+              }
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildExamCard(Map<String, dynamic> exam, double screenWidth) {
+    // Debug: Afficher la structure des données de l'épreuve
+    print('🔍 [HomeScreen] Exam data: $exam');
+
+    // Helper pour extraire une valeur multilangue
+    String _extractString(dynamic value, {String defaultValue = 'Épreuve'}) {
+      if (value == null) return defaultValue;
+      if (value is String) return value;
+      if (value is Map) {
+        return value['fr']?.toString() ?? value['en']?.toString() ?? defaultValue;
+      }
+      return value.toString();
+    }
+
+    // Extraire les données de l'épreuve
+    final title = _extractString(exam['titre'] ?? exam['title'] ?? exam['intitule']);
+    final formationId = exam['formation_id'] ?? exam['formationId'] ?? exam['id'] ?? 0;
+    final formationTitle = _extractString(exam['formation_titre'] ?? exam['formation_title'] ?? exam['titre']);
+
+    print('🔍 [HomeScreen] Extracted - title: $title, formationId: $formationId, formationTitle: $formationTitle');
+
+    return Container(
+      width: screenWidth * 0.5,
+      margin: const EdgeInsets.only(right: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () {
+          // Naviguer vers la page d'examen seulement si formationId est valide
+          if (formationId > 0) {
+            Navigator.pushNamed(
+              context,
+              '/exam-detail',
+              arguments: {
+                'formationId': formationId,
+                'formationTitle': formationTitle,
+              },
+            );
+          } else {
+            // Afficher un message si l'épreuve n'est pas disponible
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Épreuve non disponible pour "$title"'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.picture_as_pdf,
+                size: 40,
+                color: Color(0xFF1E3A8A),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Épreuve',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBottomNavigationBar(double screenWidth) {
+  Widget _buildBottomNavigationBar() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 1,
+            color: Colors.grey.withValues(alpha: 0.2),
             blurRadius: 10,
-            offset: const Offset(0, -3),
+            spreadRadius: 2,
           ),
         ],
       ),
       child: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
         currentIndex: _selectedIndex,
         onTap: (index) {
           setState(() {
             _selectedIndex = index;
           });
-
-          switch (index) {
-            case 0:
-              // Already on home
-              break;
-            case 1:
-              Navigator.pushNamed(context, '/courses');
-              break;
-            case 2:
-              Navigator.pushNamed(context, '/messages');
-              break;
-            case 3:
-              Navigator.pushNamed(context, '/profile');
-              break;
-          }
+          _navigateToPage(index);
         },
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.white,
         selectedItemColor: const Color(0xFF1E3A8A),
         unselectedItemColor: Colors.grey[400],
-        selectedLabelStyle: TextStyle(fontSize: screenWidth * 0.03),
-        unselectedLabelStyle: TextStyle(fontSize: screenWidth * 0.03),
+        elevation: 0,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
@@ -677,6 +1018,10 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.school),
             label: 'Cours',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.menu_book),
+            label: 'Bibliothèque',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.message),
@@ -691,831 +1036,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildMyCoursesSection(double screenWidth, double screenHeight) {
-    return Consumer<AuthProvider>(
-      builder: (context, authProvider, child) {
-        if (!authProvider.isAuthenticated) {
-          return const SizedBox.shrink();
-        }
-
-        return Consumer<EnrollmentProvider>(
-          builder: (context, enrollmentProvider, child) {
-            if (enrollmentProvider.userEnrollments.isEmpty) {
-              return const SizedBox.shrink();
-            }
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Mes cours',
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.055,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/courses');
-                      },
-                      child: Text(
-                        'Voir tout',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.035,
-                          color: const Color(0xFF1E3A8A),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: screenHeight * 0.25,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: enrollmentProvider.userEnrollments.take(5).length,
-                    itemBuilder: (context, index) {
-                      final enrollment = enrollmentProvider.userEnrollments[index];
-                      final formation = enrollment['formation'];
-
-                      if (formation == null) {
-                        return const SizedBox.shrink();
-                      }
-
-                      return Container(
-                        width: screenWidth * 0.7,
-                        margin: const EdgeInsets.only(right: 16),
-                        child: _buildEnrolledCourseCard(formation, enrollment, screenWidth, screenHeight),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+  void _navigateToPage(int index) {
+    switch (index) {
+      case 0:
+        // Already on home
+        break;
+      case 1:
+        Navigator.pushReplacementNamed(context, '/courses');
+        break;
+      case 2:
+        Navigator.pushReplacementNamed(context, '/library');
+        break;
+      case 3:
+        Navigator.pushReplacementNamed(context, '/messages');
+        break;
+      case 4:
+        Navigator.pushReplacementNamed(context, '/profile');
+        break;
+    }
   }
-
-  Widget _buildEnrolledCourseCard(dynamic formation, dynamic enrollment, double screenWidth, double screenHeight) {
-    // Extraire les données de formation depuis l'objet enrollment
-    final title = TranslationHelper.getTranslatedText(formation['intitule'], defaultText: 'Formation');
-    final description = TranslationHelper.getDescription(formation['description']);
-    final prix = TranslationHelper.getPrice(formation['prix']);
-
-    final slug = formation['slug'] ?? '';
-    final imageUrl = formation['image'] ?? '';
-    final etatCommande = enrollment['etat_commande'] ?? 0;
-    final date = enrollment['date'] ?? '';
-
-    return GestureDetector(
-      onTap: () {
-        Navigator.pushNamed(
-          context,
-          '/course-detail',
-          arguments: {
-            'courseTitle': title,
-            'instructor': 'INSAM Tech',
-            'rating': 5.0,
-            'price': prix,
-            'description': description,
-            'slug': slug,
-          },
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
-              spreadRadius: 2,
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              child: Container(
-                height: screenHeight * 0.12,
-                width: double.infinity,
-                color: Colors.grey[200],
-                child: imageUrl.isNotEmpty
-                    ? Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
-                            child: const Icon(
-                              Icons.play_circle_outline,
-                              size: 48,
-                              color: Color(0xFF1E3A8A),
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
-                        child: const Icon(
-                          Icons.play_circle_outline,
-                          size: 48,
-                          color: Color(0xFF1E3A8A),
-                        ),
-                      ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.04,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'INSAM Tech',
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.035,
-                        color: Colors.grey[600],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const Spacer(),
-                    // Statut de la commande (optimisé pour l'espace)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: etatCommande == 0
-                                  ? Colors.orange.withValues(alpha: 0.2)
-                                  : Colors.green.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              etatCommande == 0 ? 'En attente' : 'Actif',
-                              style: TextStyle(
-                                fontSize: screenWidth * 0.028,
-                                color: etatCommande == 0 ? Colors.orange : Colors.green,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLibrarySection(double screenWidth, double screenHeight) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section Header
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Notre bibliothèque',
-                style: TextStyle(
-                  fontSize: screenWidth * 0.05,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pushNamed(context, '/digital-library');
-                },
-                child: Text(
-                  'Voir tout',
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.035,
-                    color: const Color(0xFF1E3A8A),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        SizedBox(height: screenHeight * 0.01),
-
-        // Library Content
-        Consumer<LibraryProvider>(
-          builder: (context, libraryProvider, child) {
-            if (libraryProvider.isLoadingLibrary) {
-              return Container(
-                height: screenHeight * 0.3,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: const Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            if (libraryProvider.hasLibraryError) {
-              return Container(
-                height: screenHeight * 0.3,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 48,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Erreur de chargement',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.04,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            final books = libraryProvider.books.take(5).toList();
-
-            if (books.isEmpty) {
-              return Container(
-                height: screenHeight * 0.3,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.library_books_outlined,
-                        size: 48,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Aucun livre disponible',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.04,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            return SizedBox(
-              height: screenHeight * 0.3,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: books.length,
-                itemBuilder: (context, index) {
-                  final book = books[index];
-                  return _buildLibraryBookCard(book, screenWidth, screenHeight);
-                },
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLibraryBookCard(Map<String, dynamic> book, double screenWidth, double screenHeight) {
-    final title = book['titre'] ?? 'Livre sans titre';
-    final author = book['auteur'] ?? 'Auteur inconnu';
-    final coverUrl = book['cover_url'] ?? '';
-    final pdfUrl = book['pdf_url'] ?? '';
-
-    return Container(
-      width: screenWidth * 0.4,
-      margin: const EdgeInsets.only(right: 16),
-      child: InkWell(
-        onTap: () {
-          if (pdfUrl.isNotEmpty) {
-            Navigator.pushNamed(
-              context,
-              '/pdf-viewer',
-              arguments: {
-                'url': pdfUrl,
-                'title': title,
-              },
-            );
-          }
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.1),
-                spreadRadius: 1,
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Book Cover
-              Expanded(
-                flex: 3,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                    color: Colors.grey[200],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                    child: coverUrl.isNotEmpty
-                        ? Image.network(
-                            coverUrl,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Center(
-                                child: Icon(
-                                  Icons.book,
-                                  size: 40,
-                                  color: Colors.grey[400],
-                                ),
-                              );
-                            },
-                          )
-                        : Center(
-                            child: Icon(
-                              Icons.book,
-                              size: 40,
-                              color: Colors.grey[400],
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-
-              // Book Info
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.032,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        author,
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.028,
-                          color: Colors.grey[600],
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const Spacer(),
-                      if (pdfUrl.isNotEmpty)
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.picture_as_pdf,
-                              size: 16,
-                              color: Colors.red[400],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'PDF',
-                              style: TextStyle(
-                                fontSize: screenWidth * 0.025,
-                                color: Colors.red[400],
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBestExamsSection(double screenWidth, double screenHeight) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section Header
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Nos meilleures épreuves',
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.045,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  // TODO: Navigate to exams screen when implemented
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Section épreuves bientôt disponible'),
-                      backgroundColor: Color(0xFF1E3A8A),
-                    ),
-                  );
-                },
-                child: Text(
-                  'Voir tout',
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.035,
-                    color: const Color(0xFF1E3A8A),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        SizedBox(height: screenHeight * 0.01),
-
-        // Best Exams Content - From Backend
-        Consumer<CourseProvider>(
-          builder: (context, courseProvider, child) {
-            if (courseProvider.isLoading) {
-              return SizedBox(
-                height: screenHeight * 0.25,
-                child: const Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            if (courseProvider.hasError) {
-              return SizedBox(
-                height: screenHeight * 0.25,
-                child: Center(
-                  child: Text(
-                    'Erreur de chargement des épreuves',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: screenWidth * 0.035,
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            // Utiliser les formations du provider (limitées à 5 pour l'affichage)
-            final formations = courseProvider.featuredCourses.take(5).toList();
-
-            if (formations.isEmpty) {
-              return SizedBox(
-                height: screenHeight * 0.25,
-                child: Center(
-                  child: Text(
-                    'Aucune épreuve disponible',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: screenWidth * 0.035,
-                    ),
-                  ),
-                ),
-              );
-            }
-
-            return SizedBox(
-              height: screenHeight * 0.25,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: formations.length,
-                itemBuilder: (context, index) {
-                  final formation = formations[index];
-                  final formationData = {
-                    'id': formation.id,
-                    'nom': formation.title,
-                    'image': formation.imageUrl,
-                    'description': formation.description,
-                    'prix': formation.price,
-                  };
-                  return _buildExamCard(formationData, index, screenWidth, screenHeight);
-                },
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildExamCard(Map<String, dynamic> formation, int index, double screenWidth, double screenHeight) {
-    final title = formation['nom'] ?? 'Formation';
-    final imageUrl = formation['image'] ?? formation['img'] ?? '';
-    final formationId = formation['id'] ?? index;
-    final description = formation['description'] ?? '';
-
-    // Couleurs par défaut basées sur l'index si pas d'image
-    final defaultColors = [
-      const Color(0xFF4CAF50), // Vert
-      const Color(0xFF2196F3), // Bleu
-      const Color(0xFFFF9800), // Orange
-      const Color(0xFF9C27B0), // Violet
-      const Color(0xFF00BCD4), // Cyan
-      const Color(0xFFE91E63), // Rose
-      const Color(0xFF795548), // Marron
-      const Color(0xFF607D8B), // Bleu gris
-    ];
-
-    final cardColor = defaultColors[index % defaultColors.length];
-
-    return Container(
-      width: screenWidth * 0.6,
-      margin: const EdgeInsets.only(right: 16),
-      child: InkWell(
-        onTap: () {
-          Navigator.pushNamed(
-            context,
-            '/exam-detail',
-            arguments: {
-              'formationId': formationId,
-              'formationTitle': title,
-            },
-          );
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.1),
-                spreadRadius: 1,
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Image de l'épreuve
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                child: Container(
-                  height: screenHeight * 0.1,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        cardColor.withValues(alpha: 0.8),
-                        cardColor.withValues(alpha: 0.6),
-                      ],
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      // Image de fond
-                      imageUrl.isNotEmpty ? Image.network(
-                        imageUrl,
-                        width: double.infinity,
-                        height: double.infinity,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            color: cardColor.withValues(alpha: 0.1),
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                                    : null,
-                                strokeWidth: 2,
-                                color: cardColor,
-                              ),
-                            ),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            color: cardColor.withValues(alpha: 0.3),
-                            child: Icon(
-                              Icons.school,
-                              size: 40,
-                              color: Colors.white.withValues(alpha: 0.8),
-                            ),
-                          );
-                        },
-                      ) : Container(
-                        color: cardColor.withValues(alpha: 0.3),
-                        child: Icon(
-                          Icons.school,
-                          size: 40,
-                          color: Colors.white.withValues(alpha: 0.8),
-                        ),
-                      ),
-                      // Overlay gradient
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.4),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                // Exam Icon and Type
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.assignment,
-                        color: Color(0xFF1E3A8A),
-                        size: 24,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.orange[100],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Épreuve',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.025,
-                          color: Colors.orange[800],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-
-                // Exam Title
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: screenWidth * 0.04,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-
-                const SizedBox(height: 8),
-
-                // Exam Year and Stats
-                Row(
-                  children: [
-                    Icon(
-                      Icons.calendar_today,
-                      size: 16,
-                      color: Colors.grey[600],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '2024',
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.032,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const Spacer(),
-                    Icon(
-                      Icons.star,
-                      size: 16,
-                      color: Colors.amber[600],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '4.5',
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.032,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const Spacer(),
-
-                // Download Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      // TODO: Implement download functionality
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Téléchargement bientôt disponible'),
-                          backgroundColor: Color(0xFF1E3A8A),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1E3A8A),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: const Icon(Icons.download, size: 16),
-                    label: Text(
-                      'Télécharger',
-                      style: TextStyle(fontSize: screenWidth * 0.028),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
 }

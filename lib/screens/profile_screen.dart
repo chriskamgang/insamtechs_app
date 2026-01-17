@@ -12,9 +12,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  int _selectedIndex = 3;
-
-  final List<String> skills = ['UI/UX', 'Graphics Design', 'Figma', 'Video Editor'];
+  int _selectedIndex = 4;
 
   @override
   Widget build(BuildContext context) {
@@ -124,88 +122,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     SizedBox(height: screenHeight * 0.025),
 
                     // Name and Tag Line
-                    Text(
-                      'Nom Utilisateur',
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.06,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                    SizedBox(height: screenWidth * 0.01),
-                    Text(
-                      'Ligne de signature',
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.04,
-                        color: Colors.grey[600],
-                      ),
+                    Consumer<AuthProvider>(
+                      builder: (context, authProvider, child) {
+                        final user = authProvider.user;
+                        final fullName = user?.fullName ?? 'Nom Utilisateur';
+                        final email = user?.email ?? 'email@example.com';
+
+                        return Column(
+                          children: [
+                            Text(
+                              fullName,
+                              style: TextStyle(
+                                fontSize: screenWidth * 0.06,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                            SizedBox(height: screenWidth * 0.01),
+                            Text(
+                              email,
+                              style: TextStyle(
+                                fontSize: screenWidth * 0.04,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
 
                     SizedBox(height: screenHeight * 0.04),
 
                     // About Me Section
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'À propos de moi',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.05,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                        ),
-                      ),
+                    Consumer<AuthProvider>(
+                      builder: (context, authProvider, child) {
+                        final about = authProvider.user?.about;
+                        if (about != null && about.isNotEmpty) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'À propos de moi',
+                                  style: TextStyle(
+                                    fontSize: screenWidth * 0.05,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: screenWidth * 0.02),
+                              Text(
+                                about,
+                                style: TextStyle(
+                                  fontSize: screenWidth * 0.035,
+                                  color: Colors.grey[600],
+                                  height: 1.5,
+                                ),
+                              ),
+                              SizedBox(height: screenHeight * 0.04),
+                            ],
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
                     ),
-                    SizedBox(height: screenWidth * 0.02),
-                    Text(
-                      'Lorem ipsum dolor sit amet consectetur. Nec eget accumsan molestie proin. Integer rhoncus vitae nisi natoque ac mus tellus scelerisque gravida.',
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.035,
-                        color: Colors.grey[600],
-                        height: 1.5,
-                      ),
-                    ),
-
-                    SizedBox(height: screenHeight * 0.04),
 
                     // My Skills Section
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Mes Compétences',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.05,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: screenWidth * 0.03),
-
-                    // Skills Tags
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: skills.map((skill) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.grey[300]!),
-                          ),
-                          child: Text(
-                            skill,
-                            style: TextStyle(
-                              fontSize: screenWidth * 0.035,
-                              color: Colors.grey[700],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                    Consumer<AuthProvider>(
+                      builder: (context, authProvider, child) {
+                        final skills = authProvider.user?.skills;
+                        if (skills != null && skills.isNotEmpty) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Mes Compétences',
+                                  style: TextStyle(
+                                    fontSize: screenWidth * 0.05,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: screenWidth * 0.03),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: skills.map((skill) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: Colors.grey[300]!),
+                                    ),
+                                    child: Text(
+                                      skill,
+                                      style: TextStyle(
+                                        fontSize: screenWidth * 0.035,
+                                        color: Colors.grey[700],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              SizedBox(height: screenHeight * 0.04),
+                            ],
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
                     ),
                   ],
                 ),
@@ -228,66 +262,94 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildBottomNavigationBar() {
     return Container(
+      height: 80,
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.2),
+            color: Colors.grey.withOpacity(0.3),
+            spreadRadius: 1,
             blurRadius: 10,
-            spreadRadius: 2,
           ),
         ],
       ),
-      child: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-          _navigateToPage(index);
-        },
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: const Color(0xFF1E3A8A),
-        unselectedItemColor: Colors.grey[400],
-        elevation: 0,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Accueil',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.school),
-            label: 'Cours',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.library_books),
-            label: 'Bibliothèque',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profil',
-          ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(Icons.home, 'Accueil', 0),
+          _buildNavItem(Icons.school, 'Cours', 1),
+          _buildNavItem(Icons.menu_book, 'Bibliothèque', 2),
+          _buildNavItem(Icons.message, 'Messages', 3),
+          _buildNavItem(Icons.person, 'Profil', 4),
         ],
       ),
     );
   }
 
-  void _navigateToPage(int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/home');
+  Widget _buildNavItem(IconData icon, String label, int index) {
+    // Determine selected index based on current route
+    int currentIndex = 0;
+    String currentRoute = ModalRoute.of(context)?.settings.name ?? '';
+
+    switch(currentRoute) {
+      case '/home':
+        currentIndex = 0;
         break;
-      case 1:
-        Navigator.pushNamed(context, '/courses');
+      case '/courses':
+        currentIndex = 1;
         break;
-      case 2:
-        Navigator.pushNamed(context, '/digital-library');
+      case '/library':
+        currentIndex = 2;
         break;
-      case 3:
-        // Already on profile
+      case '/messages':
+        currentIndex = 3;
+        break;
+      case '/profile':
+        currentIndex = 4;
         break;
     }
+
+    final isSelected = currentIndex == index;
+    return GestureDetector(
+      onTap: () {
+        switch (index) {
+          case 0:
+            Navigator.pushReplacementNamed(context, '/home');
+            break;
+          case 1:
+            Navigator.pushReplacementNamed(context, '/courses');
+            break;
+          case 2:
+            Navigator.pushReplacementNamed(context, '/library');
+            break;
+          case 3:
+            Navigator.pushReplacementNamed(context, '/messages');
+            break;
+          case 4:
+            Navigator.pushReplacementNamed(context, '/profile');
+            break;
+        }
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            color: isSelected ? const Color(0xFF1E3A8A) : Colors.grey,
+            size: 24,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? const Color(0xFF1E3A8A) : Colors.grey,
+              fontSize: 10,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildQuickActions(double screenWidth) {
@@ -350,12 +412,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       screenWidth: screenWidth,
                     ),
                   ),
-                  const SizedBox(width: 16),
                   Expanded(
                     child: _buildActionButton(
-                      icon: Icons.library_books,
+                      icon: Icons.menu_book,
                       label: 'Bibliothèque',
-                      onTap: () => Navigator.pushNamed(context, '/digital-library'),
+                      onTap: () => Navigator.pushNamed(context, '/library'),
                       screenWidth: screenWidth,
                     ),
                   ),

@@ -70,18 +70,27 @@ class AuthService {
     required String passwordConfirmation,
     String? genre,
     String? age,
+    String? about,
+    List<String>? skills,
   }) async {
     try {
-      final registerRequest = RegisterRequest(
-        nom: nom,
-        prenom: prenom,
-        telephone: telephone,
-        password: password,
-      );
+      final Map<String, dynamic> registerData = {
+        'nom': nom,
+        'prenom': prenom,
+        'email': email,
+        'tel_1': telephone,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      };
+
+      if (genre != null) registerData['genre'] = genre;
+      if (age != null) registerData['age'] = age;
+      if (about != null && about.isNotEmpty) registerData['about'] = about;
+      if (skills != null && skills.isNotEmpty) registerData['skills'] = skills;
 
       final response = await _apiService.post(
         ApiConfig.registerEndpoint,
-        data: registerRequest.toJson(),
+        data: registerData,
       );
 
       // Gérer les réponses d'erreur d'authentification
@@ -197,9 +206,11 @@ class AuthService {
     }
   }
 
-  /// Save user data to memory
+  /// Save user data to memory and secure storage
   Future<void> _saveUserData(User user) async {
     _currentUser = user;
+    // Save user ID to secure storage for quick access
+    await _apiService.saveUserId(user.id);
   }
 
   /// Clear all user data

@@ -198,96 +198,104 @@ class _CoursesScreenState extends State<CoursesScreen> {
           );
         },
         borderRadius: BorderRadius.circular(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Course Image
-            Expanded(
-              flex: 3,
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  color: Colors.grey[200],
-                  image: (course.imageUrl?.isNotEmpty ?? false)
-                      ? DecorationImage(
-                          image: NetworkImage(course.imageUrl!),
-                          fit: BoxFit.cover,
+        child: SizedBox(
+          height: 200, // Fixed height to prevent overflow
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Course Image
+              Expanded(
+                flex: 3,
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    color: Colors.grey[200],
+                    image: (course.imageUrl?.isNotEmpty ?? false)
+                        ? DecorationImage(
+                            image: NetworkImage(course.imageUrl!),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                  ),
+                  child: (course.imageUrl?.isEmpty ?? true)
+                      ? const Center(
+                          child: Icon(
+                            Icons.school,
+                            size: 40,
+                            color: Colors.grey,
+                          ),
                         )
                       : null,
                 ),
-                child: (course.imageUrl?.isEmpty ?? true)
-                    ? const Center(
-                        child: Icon(
-                          Icons.school,
-                          size: 40,
-                          color: Colors.grey,
-                        ),
-                      )
-                    : null,
               ),
-            ),
 
-            // Course Details
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      course.title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+              // Course Details
+              Expanded(
+                flex: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        course.title,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      course.instructor,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
+                      const SizedBox(height: 1),
+                      Text(
+                        course.instructor,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.star,
-                          size: 16,
-                          color: Colors.amber[600],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          course.rating.toStringAsFixed(1),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.star,
+                            size: 16,
+                            color: Colors.amber[600],
                           ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          course.price,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E3A8A),
+                          const SizedBox(width: 4),
+                          Text(
+                            course.rating.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const Spacer(),
+                          Flexible(
+                            child: Text(
+                              course.price != '0' ? '${course.price}€' : 'Gratuit',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E3A8A),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -311,8 +319,8 @@ class _CoursesScreenState extends State<CoursesScreen> {
         children: [
           _buildNavItem(Icons.home, 'Accueil', 0),
           _buildNavItem(Icons.school, 'Cours', 1),
-          _buildNavItem(Icons.message, 'Messages', 2),
-          _buildNavItem(Icons.notifications, 'Notifications', 3),
+          _buildNavItem(Icons.menu_book, 'Bibliothèque', 2),
+          _buildNavItem(Icons.message, 'Messages', 3),
           _buildNavItem(Icons.person, 'Profil', 4),
         ],
       ),
@@ -320,24 +328,43 @@ class _CoursesScreenState extends State<CoursesScreen> {
   }
 
   Widget _buildNavItem(IconData icon, String label, int index) {
-    final isSelected = _selectedIndex == index;
+    // Determine selected index based on current route
+    int currentIndex = 0;
+    String currentRoute = ModalRoute.of(context)?.settings.name ?? '';
+
+    switch(currentRoute) {
+      case '/home':
+        currentIndex = 0;
+        break;
+      case '/courses':
+        currentIndex = 1;
+        break;
+      case '/library':
+        currentIndex = 2;
+        break;
+      case '/messages':
+        currentIndex = 3;
+        break;
+      case '/profile':
+        currentIndex = 4;
+        break;
+    }
+
+    final isSelected = currentIndex == index;
     return GestureDetector(
       onTap: () {
-        setState(() {
-          _selectedIndex = index;
-        });
         switch (index) {
           case 0:
             Navigator.pushReplacementNamed(context, '/home');
             break;
           case 1:
-            // Already on courses
+            Navigator.pushReplacementNamed(context, '/courses');
             break;
           case 2:
-            Navigator.pushReplacementNamed(context, '/messages');
+            Navigator.pushReplacementNamed(context, '/library');
             break;
           case 3:
-            Navigator.pushReplacementNamed(context, '/notifications');
+            Navigator.pushReplacementNamed(context, '/messages');
             break;
           case 4:
             Navigator.pushReplacementNamed(context, '/profile');

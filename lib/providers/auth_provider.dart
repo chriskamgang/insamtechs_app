@@ -1,25 +1,17 @@
 import 'package:flutter/foundation.dart';
 import '../models/user.dart';
+import '../services/auth_service.dart';
+import '../services/api_service.dart';
 
 enum AuthStatus { loading, authenticated, unauthenticated }
 
 class AuthProvider extends ChangeNotifier {
+  final AuthService _authService = AuthService();
+  final ApiService _apiService = ApiService();
+
   AuthStatus _status = AuthStatus.unauthenticated;
   User? _user;
   String? _errorMessage;
-
-  // Mock user for demo purposes
-  static final _mockUser = User(
-    id: 1,
-    nom: 'Dupont',
-    prenom: 'Jean',
-    email: 'jean.dupont@example.com',
-    telephone: '0123456789',
-    genre: 'Homme',
-    age: '25',
-    createdAt: DateTime.now().toIso8601String(),
-    updatedAt: DateTime.now().toIso8601String(),
-  );
 
   // Getters
   AuthStatus get status => _status;
@@ -28,21 +20,42 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => _status == AuthStatus.authenticated;
   bool get isLoading => _status == AuthStatus.loading;
 
-  /// Initialize authentication state (mock implementation)
+  /// Initialize authentication state
   Future<void> initialize() async {
     _setStatus(AuthStatus.loading);
 
     try {
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Check if user has a valid token
+      final isAuth = await _authService.isAuthenticated();
 
-      // For demo purposes, keep user unauthenticated by default
-      _setStatus(AuthStatus.unauthenticated);
+      if (isAuth) {
+        // Try to get current user from AuthService
+        final currentUser = await _authService.getCurrentUser();
+
+        if (currentUser != null) {
+          _user = currentUser;
+          _setStatus(AuthStatus.authenticated);
+        } else {
+          // Token exists but no user data, try to refresh from server
+          try {
+            _user = await _authService.refreshUserData();
+            _setStatus(AuthStatus.authenticated);
+          } catch (e) {
+            // Failed to refresh user data, clear token and set unauthenticated
+            await _authService.logout();
+            _setStatus(AuthStatus.unauthenticated);
+          }
+        }
+      } else {
+        _setStatus(AuthStatus.unauthenticated);
+      }
     } catch (e) {
+      debugPrint('Auth initialization error: $e');
       _setStatus(AuthStatus.unauthenticated);
     }
   }
 
-  /// Login user (mock implementation)
+  /// Login user with real API
   Future<bool> login({
     required String telephone,
     required String password,
@@ -51,15 +64,17 @@ class AuthProvider extends ChangeNotifier {
     _clearError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 1000)); // Simulate network delay
+      final authResponse = await _authService.login(
+        telephone: telephone,
+        password: password,
+      );
 
-      // Simple mock validation
-      if (telephone.isNotEmpty && password.length >= 4) {
-        _user = _mockUser;
+      if (authResponse.success && authResponse.token != null && authResponse.user != null) {
+        _user = authResponse.user;
         _setStatus(AuthStatus.authenticated);
         return true;
       } else {
-        _setError('Identifiants invalides');
+        _setError(authResponse.message);
         _setStatus(AuthStatus.unauthenticated);
         return false;
       }
@@ -70,7 +85,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Register user (mock implementation)
+  /// Register user with real API
   Future<bool> register({
     required String nom,
     required String prenom,
@@ -80,36 +95,39 @@ class AuthProvider extends ChangeNotifier {
     required String passwordConfirmation,
     String? genre,
     String? age,
+    String? about,
+    List<String>? skills,
   }) async {
     _setStatus(AuthStatus.loading);
     _clearError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 1200)); // Simulate network delay
+      // Validate password confirmation client-side
+      if (password != passwordConfirmation) {
+        _setError('Les mots de passe ne correspondent pas');
+        _setStatus(AuthStatus.unauthenticated);
+        return false;
+      }
 
-      // Simple mock validation
-      if (nom.isNotEmpty &&
-          prenom.isNotEmpty &&
-          email.isNotEmpty &&
-          telephone.isNotEmpty &&
-          password.length >= 4 &&
-          password == passwordConfirmation) {
+      final authResponse = await _authService.register(
+        nom: nom,
+        prenom: prenom,
+        email: email,
+        telephone: telephone,
+        password: password,
+        passwordConfirmation: passwordConfirmation,
+        genre: genre,
+        age: age,
+        about: about,
+        skills: skills,
+      );
 
-        _user = User(
-          id: 2,
-          nom: nom,
-          prenom: prenom,
-          email: email,
-          telephone: telephone,
-          genre: genre,
-          age: age,
-          createdAt: DateTime.now().toIso8601String(),
-          updatedAt: DateTime.now().toIso8601String(),
-        );
+      if (authResponse.success && authResponse.token != null && authResponse.user != null) {
+        _user = authResponse.user;
         _setStatus(AuthStatus.authenticated);
         return true;
       } else {
-        _setError('Veuillez vérifier tous les champs');
+        _setError(authResponse.message);
         _setStatus(AuthStatus.unauthenticated);
         return false;
       }
@@ -120,21 +138,21 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Logout user (mock implementation)
+  /// Logout user with real API
   Future<void> logout() async {
     _setStatus(AuthStatus.loading);
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
+      await _authService.logout();
     } catch (e) {
-      debugPrint('Logout error: \$e');
+      debugPrint('Logout error: $e');
     } finally {
       _user = null;
       _setStatus(AuthStatus.unauthenticated);
     }
   }
 
-  /// Update user profile (mock implementation)
+  /// Update user profile with real API
   Future<bool> updateProfile({
     String? nom,
     String? prenom,
@@ -143,25 +161,25 @@ class AuthProvider extends ChangeNotifier {
     String? genre,
     String? age,
   }) async {
-    if (_user == null) return false;
+    if (_user == null) {
+      _setError('Utilisateur non connecté');
+      return false;
+    }
 
     _clearError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      _user = User(
-        id: _user!.id,
-        nom: nom ?? _user!.nom,
-        prenom: prenom ?? _user!.prenom,
-        email: email ?? _user!.email,
-        telephone: telephone ?? _user!.telephone,
-        genre: genre ?? _user!.genre,
-        age: age ?? _user!.age,
-        createdAt: _user!.createdAt,
-        updatedAt: DateTime.now().toIso8601String(),
+      final updatedUser = await _authService.updateProfile(
+        userId: _user!.id,
+        nom: nom,
+        prenom: prenom,
+        email: email,
+        telephone: telephone,
+        genre: genre,
+        age: age,
       );
 
+      _user = updatedUser;
       notifyListeners();
       return true;
     } catch (e) {
@@ -170,16 +188,22 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  /// Refresh user data (mock implementation)
+  /// Refresh user data from server
   Future<void> refreshUser() async {
     if (_status != AuthStatus.authenticated) return;
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
-      // In mock implementation, user data doesn't change
-      notifyListeners();
+      final refreshedUser = await _authService.refreshUserData();
+      if (refreshedUser != null) {
+        _user = refreshedUser;
+        notifyListeners();
+      }
     } catch (e) {
-      debugPrint('Refresh user error: \$e');
+      debugPrint('Refresh user error: $e');
+      // If refresh fails with 401, logout user
+      if (e.toString().contains('401')) {
+        await logout();
+      }
     }
   }
 
@@ -208,5 +232,14 @@ class AuthProvider extends ChangeNotifier {
   void updateUserData(User updatedUser) {
     _user = updatedUser;
     notifyListeners();
+  }
+
+  /// Get user ID quickly
+  Future<int?> getUserId() async {
+    if (_user != null) {
+      return _user!.id;
+    }
+    // Try to get from secure storage
+    return await _apiService.getUserId();
   }
 }

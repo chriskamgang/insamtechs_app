@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:json_annotation/json_annotation.dart';
 
 part 'user.g.dart';
@@ -15,6 +16,9 @@ class User {
   final String? photo;
   final String? role;
   final int? droits;
+  final String? about;
+  @JsonKey(fromJson: _skillsFromJson, toJson: _skillsToJson)
+  final List<String>? skills;
   final List<dynamic>? commanders;
   @JsonKey(name: 'created_at')
   final String? createdAt;
@@ -32,6 +36,8 @@ class User {
     this.photo,
     this.role,
     this.droits,
+    this.about,
+    this.skills,
     this.commanders,
     this.createdAt,
     this.updatedAt,
@@ -56,6 +62,8 @@ class User {
     String? photo,
     String? role,
     int? droits,
+    String? about,
+    List<String>? skills,
     List<dynamic>? commanders,
     String? createdAt,
     String? updatedAt,
@@ -71,6 +79,8 @@ class User {
       photo: photo ?? this.photo,
       role: role ?? this.role,
       droits: droits ?? this.droits,
+      about: about ?? this.about,
+      skills: skills ?? this.skills,
       commanders: commanders ?? this.commanders,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -86,6 +96,29 @@ class User {
   }
 
   static dynamic _phoneToJson(String? value) {
+    return value;
+  }
+
+  // Helper functions for skills conversion
+  static List<String>? _skillsFromJson(dynamic value) {
+    if (value == null) return null;
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    if (value is String) {
+      // Si c'est une chaîne JSON, essayer de la décoder
+      try {
+        final List<dynamic> decoded = jsonDecode(value);
+        return decoded.map((e) => e.toString()).toList();
+      } catch (e) {
+        // Si ce n'est pas du JSON, retourner une liste avec la valeur
+        return [value];
+      }
+    }
+    return null;
+  }
+
+  static dynamic _skillsToJson(List<String>? value) {
     return value;
   }
 }
