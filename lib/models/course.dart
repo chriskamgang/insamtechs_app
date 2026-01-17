@@ -95,7 +95,7 @@ class Course {
 
       // Construct full URL for backend images
       // Backend serves images from storage/app/public, accessible via storage symlink
-      const baseUrl = 'http://192.168.1.180:8001';
+      const baseUrl = 'https://admin.insamtechs.com';
 
       // Clean the path by removing any leading slash or 'storage/' prefix
       String cleanPath = img!;
