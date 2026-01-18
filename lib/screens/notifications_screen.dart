@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
+
+  @override
+  State<NotificationsScreen> createState() => _NotificationsScreenState();
+}
+
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  int _selectedIndex = 4;
 
   @override
   Widget build(BuildContext context) {
@@ -110,6 +117,7 @@ class NotificationsScreen extends StatelessWidget {
           ),
         ),
       ),
+      bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
@@ -177,6 +185,105 @@ class NotificationsScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: screenWidth * 0.03,
               color: Colors.grey[500],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomNavigationBar() {
+    return Container(
+      height: 80,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.3),
+            spreadRadius: 1,
+            blurRadius: 10,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(Icons.home, 'Accueil', 0),
+          _buildNavItem(Icons.school, 'Cours', 1),
+          _buildNavItem(Icons.menu_book, 'Bibliothèque', 2),
+          _buildNavItem(Icons.message, 'Messages', 3),
+          _buildNavItem(Icons.notifications, 'Notifications', 4),
+          _buildNavItem(Icons.person, 'Profil', 5),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavItem(IconData icon, String label, int index) {
+    // Determine selected index based on current route
+    int currentIndex = 0;
+    String currentRoute = ModalRoute.of(context)?.settings.name ?? '';
+
+    switch(currentRoute) {
+      case '/home':
+        currentIndex = 0;
+        break;
+      case '/courses':
+        currentIndex = 1;
+        break;
+      case '/library':
+        currentIndex = 2;
+        break;
+      case '/messages':
+        currentIndex = 3;
+        break;
+      case '/notifications':
+        currentIndex = 4;
+        break;
+      case '/profile':
+        currentIndex = 5;
+        break;
+    }
+
+    final isSelected = currentIndex == index;
+    return GestureDetector(
+      onTap: () {
+        switch (index) {
+          case 0:
+            Navigator.pushReplacementNamed(context, '/home');
+            break;
+          case 1:
+            Navigator.pushReplacementNamed(context, '/courses');
+            break;
+          case 2:
+            Navigator.pushReplacementNamed(context, '/library');
+            break;
+          case 3:
+            Navigator.pushReplacementNamed(context, '/messages');
+            break;
+          case 4:
+            Navigator.pushReplacementNamed(context, '/notifications');
+            break;
+          case 5:
+            Navigator.pushReplacementNamed(context, '/profile');
+            break;
+        }
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            color: isSelected ? const Color(0xFF1E3A8A) : Colors.grey,
+            size: 24,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? const Color(0xFF1E3A8A) : Colors.grey,
+              fontSize: 10,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
         ],

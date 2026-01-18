@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class PDFViewerScreen extends StatefulWidget {
   final String url;
   final String title;
 
-  const PDFViewerScreen({
-    super.key,
-    required this.url,
-    required this.title,
-  });
+  const PDFViewerScreen({super.key, required this.url, required this.title});
 
   @override
   State<PDFViewerScreen> createState() => _PDFViewerScreenState();
@@ -26,7 +22,9 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeWebView();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeWebView();
+    });
   }
 
   void _initializeWebView() {
@@ -55,7 +53,8 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
             setState(() {
               _isLoading = false;
               _hasError = true;
-              _errorMessage = 'Erreur de chargement du PDF: ${error.description}';
+              _errorMessage =
+                  'Erreur de chargement du PDF: ${error.description}';
             });
           },
         ),
@@ -65,19 +64,72 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
   }
 
   void _loadPDF() {
-    if (widget.url.isEmpty) {
+    // Handle both 'url' and 'pdfUrl' parameters from different sources
+    String pdfUrl = widget.url;
+
+    // Check if we're coming from the library screen which uses 'pdfUrl'
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    if (args != null && args.containsKey('pdfUrl')) {
+      pdfUrl = args['pdfUrl'] ?? widget.url;
+    }
+
+    if (pdfUrl.isEmpty) {
       setState(() {
         _isLoading = false;
         _hasError = true;
-        _errorMessage = 'URL du PDF non valide';
+        _errorMessage = 'Aucun fichier PDF disponible';
       });
       return;
     }
 
     try {
-      // Use Google Drive PDF viewer for better compatibility
-      final pdfViewerUrl = 'https://docs.google.com/gview?embedded=true&url=${Uri.encodeComponent(widget.url)}';
-      _webViewController.loadRequest(Uri.parse(pdfViewerUrl));
+      // Vérifier si l'URL est valide et accessible
+      var cleanUrl = pdfUrl.trim();
+
+      // Si l'URL commence par "/storage/" ou "/uploads/", ajouter l'URL de base
+      if (cleanUrl.startsWith('/storage/') ||
+          cleanUrl.startsWith('/uploads/')) {
+        // Remplacer par l'URL complète du serveur (à adapter selon votre configuration)
+        cleanUrl = 'http://192.168.1.196:8001/storage${cleanUrl.substring(9)}';
+      } else if (!cleanUrl.startsWith('http://') &&
+          !cleanUrl.startsWith('https://')) {
+        // Si ce n'est pas une URL complète, essayer d'ajouter le domaine
+        // Vérifier si le chemin commence par "Fasciclues" ou un chemin similaire
+        if (cleanUrl.startsWith('/Fasciclues') ||
+            cleanUrl.startsWith('Fasciclues')) {
+          // Ajouter le préfixe /storage/ pour les fichiers de ce type
+          if (cleanUrl.startsWith('/')) {
+            cleanUrl = 'http://192.168.1.196:8001/storage$cleanUrl';
+          } else {
+            cleanUrl = 'http://192.168.1.196:8001/storage/$cleanUrl';
+          }
+        } else {
+          // Pour les autres cas, assurer qu'il y a un '/' entre le port et le chemin
+          if (cleanUrl.startsWith('/')) {
+            cleanUrl = 'http://192.168.1.196:8001$cleanUrl';
+          } else {
+            cleanUrl = 'http://192.168.1.196:8001/$cleanUrl';
+          }
+        }
+      }
+
+      // Vérifier si l'URL se termine par .pdf ou contient un paramètre de type PDF
+      if (!cleanUrl.toLowerCase().contains('.pdf') &&
+          !cleanUrl.toLowerCase().contains('pdf') &&
+          !cleanUrl.contains(
+            '?',
+          ) // certains liens PDF peuvent contenir des paramètres
+          ) {
+        // Si ce n'est pas clairement un PDF, on tente quand même
+        print('⚠️ L\'URL ne semble pas être un PDF: $cleanUrl');
+      }
+
+      // Essayez d'abord de charger directement le PDF dans le webview
+      // Si c'est un lien externe, il sera chargé directement aussi
+      final directPdfUrl = cleanUrl;
+      print('📄 Chargement direct du PDF depuis: $directPdfUrl');
+      _webViewController.loadRequest(Uri.parse(directPdfUrl));
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -89,12 +141,17 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Get the title from arguments if available (for library screen)
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    String displayTitle = widget.title;
+    if (args != null && args.containsKey('title')) {
+      displayTitle = args['title'] ?? widget.title;
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.title,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(displayTitle, overflow: TextOverflow.ellipsis),
         backgroundColor: const Color(0xFF1E3A8A),
         foregroundColor: Colors.white,
         systemOverlayStyle: const SystemUiOverlayStyle(
@@ -102,10 +159,7 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
           statusBarIconBrightness: Brightness.light,
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadPDF,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadPDF),
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
@@ -174,10 +228,7 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
           SizedBox(height: 16),
           Text(
             'Chargement du PDF...',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey),
           ),
         ],
       ),
@@ -189,11 +240,7 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 64,
-            color: Colors.red[400],
-          ),
+          Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
           const SizedBox(height: 16),
           Text(
             'Erreur de chargement',
@@ -211,10 +258,7 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
                   ? _errorMessage
                   : 'Impossible de charger le document PDF',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
           ),
           const SizedBox(height: 24),
@@ -237,7 +281,17 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
   }
 
   Future<void> _downloadPDF() async {
-    if (widget.url.isEmpty) {
+    // Handle both 'url' and 'pdfUrl' parameters from different sources
+    String pdfUrl = widget.url;
+
+    // Check if we're coming from the library screen which uses 'pdfUrl'
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    if (args != null && args.containsKey('pdfUrl')) {
+      pdfUrl = args['pdfUrl'] ?? widget.url;
+    }
+
+    if (pdfUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('URL du PDF non disponible'),
@@ -248,7 +302,7 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
     }
 
     try {
-      final uri = Uri.parse(widget.url);
+      final uri = Uri.parse(pdfUrl);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
         if (mounted) {
@@ -282,7 +336,17 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
   }
 
   void _sharePDF() {
-    if (widget.url.isEmpty) {
+    // Handle both 'url' and 'pdfUrl' parameters from different sources
+    String pdfUrl = widget.url;
+
+    // Check if we're coming from the library screen which uses 'pdfUrl'
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    if (args != null && args.containsKey('pdfUrl')) {
+      pdfUrl = args['pdfUrl'] ?? widget.url;
+    }
+
+    if (pdfUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('URL du PDF non disponible pour le partage'),
@@ -295,7 +359,7 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
     // Copy URL to clipboard or share - for now just show the URL
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('URL du PDF: ${widget.url}'),
+        content: Text('URL du PDF: $pdfUrl'),
         backgroundColor: Colors.blue,
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
@@ -315,6 +379,16 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
   }
 
   void _showPDFInfo() {
+    // Handle both 'url' and 'pdfUrl' parameters from different sources
+    String pdfUrl = widget.url;
+
+    // Check if we're coming from the library screen which uses 'pdfUrl'
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    if (args != null && args.containsKey('pdfUrl')) {
+      pdfUrl = args['pdfUrl'] ?? widget.url;
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -325,7 +399,7 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
           children: [
             _buildInfoRow('Titre', widget.title),
             const SizedBox(height: 8),
-            _buildInfoRow('URL', widget.url),
+            _buildInfoRow('URL', pdfUrl),
             const SizedBox(height: 8),
             _buildInfoRow('Format', 'PDF'),
             const SizedBox(height: 8),
@@ -348,19 +422,10 @@ class _PDFViewerScreenState extends State<PDFViewerScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
         ),
         const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[700],
-          ),
-        ),
+        Text(value, style: TextStyle(fontSize: 14, color: Colors.grey[700])),
       ],
     );
   }

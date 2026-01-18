@@ -22,10 +22,28 @@ class _ExamDetailScreenState extends State<ExamDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _loadExam();
+    // Use addPostFrameCallback to avoid calling setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadExam();
+    });
   }
 
   Future<void> _loadExam() async {
+    // Vérifier que formationId est valide avant de charger
+    if (widget.formationId <= 0) {
+      print('⚠️ [ExamDetailScreen] Invalid formationId: ${widget.formationId}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Formation invalide'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        Navigator.pop(context);
+      }
+      return;
+    }
+
     final authProvider = context.read<AuthProvider>();
     if (authProvider.isAuthenticated && authProvider.user?.id != null) {
       await context.read<ExamProvider>().loadExamForFormation(

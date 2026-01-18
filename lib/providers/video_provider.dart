@@ -1,14 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import '../data/mock_data.dart';
 import '../models/course.dart';
+import '../services/video_service.dart';
 
 class VideoProvider with ChangeNotifier {
+  final VideoService _videoService = VideoService();
 
   // État des catégories vidéo
   List<CourseCategory> _videoCategories = [];
   List<CourseCategory> _allVideoCategories = [];
-  Map<String, dynamic>? _currentCategory;
+  CourseCategory? _currentCategory;
   bool _isLoadingCategories = false;
   String? _categoriesError;
 
@@ -38,7 +39,7 @@ class VideoProvider with ChangeNotifier {
   // Getters pour les catégories
   List<CourseCategory> get videoCategories => List.unmodifiable(_videoCategories);
   List<CourseCategory> get allVideoCategories => List.unmodifiable(_allVideoCategories);
-  Map<String, dynamic>? get currentCategory => _currentCategory;
+  CourseCategory? get currentCategory => _currentCategory;
   bool get isLoadingCategories => _isLoadingCategories;
   String? get categoriesError => _categoriesError;
   bool get hasCategoriesError => _categoriesError != null;
@@ -69,76 +70,91 @@ class VideoProvider with ChangeNotifier {
   String? get downloadError => _downloadError;
   bool get hasDownloadError => _downloadError != null;
 
-  /// Charger les catégories vidéo
+  /// Charger les catégories vidéo avec API réelle
   Future<void> loadVideoCategories({int? perPage}) async {
     _setLoadingCategories(true);
     _clearCategoriesError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
+      final response = await _videoService.getVideoCategories(perPage: perPage);
 
-      final categories = MockData.getMockCategories();
-      _videoCategories = categories.take(perPage ?? categories.length).toList();
-      _allVideoCategories = categories;
+      // Parser les catégories depuis la réponse
+      // La réponse peut être structurée comme { "categories": { "current_page": 1, "data": [...] } } ou { "categories": [...] }
+      List<dynamic> categoriesData = [];
+
+      if (response['categories'] is Map<String, dynamic>) {
+        // Structure avec pagination: { "categories": { "current_page": 1, "data": [...] } }
+        final categoriesMap = response['categories'] as Map<String, dynamic>;
+        if (categoriesMap['data'] is List) {
+          categoriesData = categoriesMap['data'] as List;
+        }
+      } else if (response['categories'] is List) {
+        // Structure directe: { "categories": [...] }
+        categoriesData = response['categories'] as List;
+      } else if (response['data'] is List) {
+        // Structure alternative: { "data": [...] }
+        categoriesData = response['data'] as List;
+      }
+
+      _videoCategories = categoriesData
+          .map((item) => CourseCategory.fromJson(item as Map<String, dynamic>))
+          .toList();
+      _allVideoCategories = _videoCategories;
 
       notifyListeners();
     } catch (e) {
-      _setCategoriesError('Impossible de charger les catégories: \${e.toString()}');
+      _setCategoriesError('Impossible de charger les catégories: ${e.toString()}');
     } finally {
       _setLoadingCategories(false);
     }
   }
 
-  /// Charger une catégorie spécifique
+  /// Charger une catégorie spécifique par slug avec API réelle
   Future<void> loadCategoryBySlug(String slug) async {
     _setLoadingCategories(true);
     _clearCategoriesError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
+      final response = await _videoService.getCategoryBySlug(slug);
 
-      final categories = MockData.getMockCategories();
-      final category = categories.firstWhere(
-        (cat) => cat.slug == slug,
-        orElse: () => categories.first,
-      );
-      _currentCategory = {
-        'id': category.id,
-        'intitule': category.intitule,
-        'slug': category.slug,
-        'type': category.type,
-        'date': category.date,
-      };
+      // Parser la catégorie depuis la réponse
+      final categoryData = response['categorie'] ?? response['data'];
+      if (categoryData != null) {
+        _currentCategory = CourseCategory.fromJson(categoryData as Map<String, dynamic>);
+      }
       notifyListeners();
     } catch (e) {
-      _setCategoriesError('Impossible de charger la catégorie: \${e.toString()}');
+      _setCategoriesError('Impossible de charger la catégorie: ${e.toString()}');
     } finally {
       _setLoadingCategories(false);
     }
   }
 
-  /// Charger le contenu utilisateur
+  /// Charger le contenu utilisateur avec API réelle
   Future<void> loadUserContent(int userId) async {
     _setLoadingUserContent(true);
     _clearUserContentError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
+      // Charger les formations utilisateur
+      final formationsData = await _videoService.getUserFormations(userId);
+      _userFormations = formationsData
+          .map((item) => Course.fromJson(item as Map<String, dynamic>))
+          .toList();
 
-      // Mock user formations - just return first few courses
-      final courses = MockData.getMockCourses();
-      _userFormations = courses.take(3).toList();
-      _userExams = []; // Mock empty exams
+      // Charger les examens vidéothèque
+      final examsData = await _videoService.getUserVideothequeExams(userId);
+      _userExams = examsData;
 
       notifyListeners();
     } catch (e) {
-      _setUserContentError('Impossible de charger le contenu utilisateur: \${e.toString()}');
+      _setUserContentError('Impossible de charger le contenu utilisateur: ${e.toString()}');
     } finally {
       _setLoadingUserContent(false);
     }
   }
 
-  /// Sauvegarder le progrès d'une vidéo (mock implementation)
+  /// Sauvegarder le progrès d'une vidéo avec synchronisation backend
   Future<bool> saveVideoProgress({
     required int userId,
     required int videoId,
@@ -150,21 +166,38 @@ class VideoProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 200));
+      // Sauvegarder sur le backend
+      final response = await _videoService.saveVideoProgress(
+        userId: userId,
+        videoId: videoId,
+        progress: progress,
+        watchedDuration: watchedDuration,
+        totalDuration: totalDuration,
+      );
 
-      // Mettre à jour l'état local
-      _videoProgress[videoId] = progress;
-      _watchedDurations[videoId] = watchedDuration;
+      // Vérifier le succès dans la réponse
+      final success = response['success'] == true || response['error'] == false;
 
-      // Marquer comme terminé si le progrès est de 90% ou plus
-      if (progress >= 0.9) {
-        _completedVideos.add(videoId);
+      if (success) {
+        // Mettre à jour l'état local
+        _videoProgress[videoId] = progress;
+        _watchedDurations[videoId] = watchedDuration;
+
+        // Marquer comme terminé si le progrès est de 90% ou plus
+        if (progress >= 0.9) {
+          _completedVideos.add(videoId);
+        }
+
+        notifyListeners();
       }
 
-      notifyListeners();
-      return true;
+      return success;
     } catch (e) {
-      debugPrint('Erreur lors de la sauvegarde du progrès: \$e');
+      debugPrint('Erreur lors de la sauvegarde du progrès: $e');
+      // En cas d'erreur réseau, sauvegarder localement quand même
+      _videoProgress[videoId] = progress;
+      _watchedDurations[videoId] = watchedDuration;
+      notifyListeners();
       return false;
     } finally {
       _isTrackingProgress = false;
@@ -172,22 +205,62 @@ class VideoProvider with ChangeNotifier {
     }
   }
 
-  /// Marquer une vidéo comme terminée (mock implementation)
+  /// Marquer une vidéo comme terminée avec synchronisation backend
   Future<bool> markVideoAsCompleted({
     required int userId,
     required int videoId,
   }) async {
     try {
-      await Future.delayed(const Duration(milliseconds: 200));
+      final response = await _videoService.markVideoAsCompleted(
+        userId: userId,
+        videoId: videoId,
+      );
 
+      // Vérifier le succès dans la réponse
+      final success = response['success'] == true || response['error'] == false;
+
+      if (success) {
+        _completedVideos.add(videoId);
+        _videoProgress[videoId] = 1.0;
+        notifyListeners();
+      }
+
+      return success;
+    } catch (e) {
+      debugPrint('Erreur lors du marquage comme terminé: $e');
+      // En cas d'erreur réseau, marquer localement quand même
       _completedVideos.add(videoId);
       _videoProgress[videoId] = 1.0;
-
       notifyListeners();
-      return true;
-    } catch (e) {
-      debugPrint('Erreur lors du marquage comme terminé: \$e');
       return false;
+    }
+  }
+
+  /// Charger le progrès d'une vidéo depuis le backend
+  Future<void> loadVideoProgress(int userId, int videoId) async {
+    try {
+      final progressData = await _videoService.getVideoProgress(
+        userId: userId,
+        videoId: videoId,
+      );
+
+      if (progressData != null) {
+        _videoProgress[videoId] = progressData['progress'] ?? 0.0;
+
+        if (progressData['watchedDuration'] != null) {
+          _watchedDurations[videoId] = Duration(
+            seconds: (progressData['watchedDuration'] as num).toInt(),
+          );
+        }
+
+        if ((progressData['progress'] ?? 0.0) >= 0.9) {
+          _completedVideos.add(videoId);
+        }
+
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Erreur lors du chargement du progrès: $e');
     }
   }
 
@@ -201,7 +274,7 @@ class VideoProvider with ChangeNotifier {
     return _completedVideos.contains(videoId);
   }
 
-  /// Rechercher des vidéos
+  /// Rechercher des vidéos avec API réelle
   Future<void> searchVideos({
     required String query,
     int? categoryId,
@@ -218,15 +291,21 @@ class VideoProvider with ChangeNotifier {
     _clearSearchError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
+      final resultsData = await _videoService.searchVideos(
+        query: query,
+        categoryId: categoryId,
+        limit: limit,
+      );
 
-      final results = MockData.searchCourses(query);
-      _searchResults = results.take(limit ?? results.length).toList();
+      // Parser les résultats de recherche
+      _searchResults = resultsData
+          .map((item) => Course.fromJson(item as Map<String, dynamic>))
+          .toList();
       _lastSearchQuery = query;
 
       notifyListeners();
     } catch (e) {
-      _setSearchError('Erreur lors de la recherche: \${e.toString()}');
+      _setSearchError('Erreur lors de la recherche: ${e.toString()}');
     } finally {
       _setSearching(false);
     }
@@ -240,7 +319,7 @@ class VideoProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Préparer une vidéo pour la lecture hors ligne (mock implementation)
+  /// Préparer une vidéo pour la lecture hors ligne
   Future<bool> prepareVideoForOffline({
     required int videoId,
     required String videoUrl,
@@ -249,19 +328,17 @@ class VideoProvider with ChangeNotifier {
     _clearDownloadError();
 
     try {
-      await Future.delayed(const Duration(seconds: 2)); // Simulate download
+      final metadata = await _videoService.prepareVideoForOffline(
+        videoId: videoId,
+        videoUrl: videoUrl,
+      );
 
-      _offlineVideos[videoId] = {
-        'id': videoId,
-        'url': videoUrl,
-        'downloaded_at': DateTime.now().toIso8601String(),
-        'size_mb': 25.5, // Mock size
-      };
-
+      // metadata est déjà un Map<String, dynamic>
+      _offlineVideos[videoId] = metadata;
       notifyListeners();
       return true;
     } catch (e) {
-      _setDownloadError('Erreur lors de la préparation: \${e.toString()}');
+      _setDownloadError('Erreur lors de la préparation: ${e.toString()}');
       return false;
     } finally {
       _setDownloading(false);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/library_provider.dart';
+import '../models/library_item.dart';
 import '../services/offline_download_service.dart';
 import '../utils/translation_helper.dart';
 
@@ -27,7 +28,10 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadBooks();
+    // Use addPostFrameCallback to avoid calling setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadBooks();
+    });
   }
 
   @override
@@ -38,14 +42,19 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
 
   Future<void> _loadBooks() async {
     final libraryProvider = context.read<LibraryProvider>();
-    await libraryProvider.loadBooksByCategory(widget.slug);
+    await libraryProvider.loadLibraryItemsByCategory(widget.slug);
     _updateFilteredBooks();
   }
 
   void _updateFilteredBooks() {
     final libraryProvider = context.read<LibraryProvider>();
-    _filteredBooks = libraryProvider.searchBooks(_searchController.text);
-    setState(() {});
+    setState(() {
+      _filteredBooks = libraryProvider.libraryItems.where((item) {
+        if (_searchController.text.isEmpty) return true;
+        return item.title.toLowerCase().contains(_searchController.text.toLowerCase()) ||
+               item.author.toLowerCase().contains(_searchController.text.toLowerCase());
+      }).toList();
+    });
   }
 
   @override
@@ -119,13 +128,13 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
   }
 
   Widget _buildBooksContent(LibraryProvider libraryProvider) {
-    if (libraryProvider.isLoadingBooks) {
+    if (libraryProvider.state == LibraryLoadingState.loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (libraryProvider.hasBooksError) {
+    if (libraryProvider.state == LibraryLoadingState.error) {
       return _buildErrorWidget(
-        libraryProvider.booksError!,
+        libraryProvider.errorMessage ?? 'Erreur de chargement',
         _loadBooks,
       );
     }
@@ -151,22 +160,59 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
     );
   }
 
-  Widget _buildBookCard(Map<String, dynamic> book) {
+  Widget _buildBookCard(dynamic book) {
+    // Convert dynamic to LibraryItem if needed
+    final LibraryItem libraryItem;
+    if (book is LibraryItem) {
+      libraryItem = book;
+    } else {
+      // If it's a map, create a LibraryItem from it
+      libraryItem = LibraryItem(
+        id: book['id'] ?? 0,
+        titre: book['titre'] ?? book['intitule'] ?? book['nom'] ?? 'Livre sans titre',
+        description: book['description'] ?? '',
+        type: book['type'] ?? 'Livre',
+        auteur: book['auteur'] ?? book['author'] ?? book['ecrivain'] ?? 'Auteur inconnu',
+        lien: book['lien'] ?? book['pdf_url'] ?? '',
+        image: book['cover_url'] ?? book['img'] ?? '',
+        categorie: book['categorie'] ?? book['category'] ?? '',
+        annee: book['annee'] ?? book['year'] ?? null,
+        slug: book['slug'] ?? '',
+        langue: book['langue'] ?? book['language'] ?? '',
+        niveau: book['niveau'] ?? book['level'] ?? '',
+        taille: book['taille'] ?? book['size'] ?? null,
+        format: book['format'] ?? '',
+        motsCles: book['motsCles'] ?? book['keywords'] ?? '',
+        estPayant: book['estPayant'] ?? book['isPaid'] ?? false,
+        prix: book['prix'] ?? book['price'] ?? '',
+        datePublication: book['datePublication'] ?? book['publicationDate'] ?? '',
+        nbPages: book['pages'] ?? book['nombre_pages'] ?? book['page_count'] ?? 0,
+        editeur: book['editeur'] ?? book['publisher'] ?? '',
+        isbn: book['isbn'] ?? '',
+        resume: book['resume'] ?? book['summary'] ?? '',
+        nbTelechargements: book['nbTelechargements'] ?? book['downloadCount'] ?? 0,
+        nbVues: book['nbVues'] ?? book['viewCount'] ?? 0,
+        estDisponible: book['estDisponible'] ?? book['isAvailable'] ?? true,
+        dateCreation: book['dateCreation'] ?? book['creationDate'] ?? '',
+        dateMiseAJour: book['dateMiseAJour'] ?? book['updateDate'] ?? '',
+      );
+    }
+
     final title = TranslationHelper.getTranslatedText(
-      book['intitule'] ?? book['titre'] ?? book['nom'],
+      libraryItem.title,
       defaultText: 'Livre sans titre',
     );
     final author = TranslationHelper.getTranslatedText(
-      book['auteur'] ?? book['author'] ?? book['ecrivain'],
+      libraryItem.author,
       defaultText: 'Auteur inconnu',
     );
     final description = TranslationHelper.getTranslatedText(
-      book['description'],
+      libraryItem.itemDescription,
       defaultText: '',
     );
-    final pages = book['pages'] ?? book['nombre_pages'] ?? book['page_count'] ?? 0;
-    final pdfUrl = book['lien'] ?? book['pdf_url'] ?? '';
-    final coverUrl = book['cover_url'] ?? book['img'] ?? '';
+    final pages = libraryItem.pageCount;
+    final pdfUrl = libraryItem.link ?? '';
+    final coverUrl = libraryItem.imageUrl ?? '';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -176,7 +222,7 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
       ),
       child: InkWell(
         onTap: () {
-          if (pdfUrl.isNotEmpty) {
+          if (pdfUrl != null && pdfUrl.isNotEmpty) {
             Navigator.pushNamed(
               context,
               '/pdf-viewer',
@@ -262,7 +308,7 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        if (pages > 0) ...[
+                        if (pages != null && pages > 0) ...[
                           Icon(
                             Icons.article,
                             size: 16,
@@ -276,9 +322,9 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
                               color: Colors.grey[500],
                             ),
                           ),
-                          if (pdfUrl.isNotEmpty) const SizedBox(width: 16),
+                          if (pdfUrl != null && pdfUrl.isNotEmpty) const SizedBox(width: 16),
                         ],
-                        if (pdfUrl.isNotEmpty) ...[
+                        if (pdfUrl != null && pdfUrl.isNotEmpty) ...[
                           Icon(
                             Icons.picture_as_pdf,
                             size: 16,
@@ -304,7 +350,7 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
               Column(
                 children: [
                   IconButton(
-                    onPressed: pdfUrl.isNotEmpty
+                    onPressed: pdfUrl != null && pdfUrl.isNotEmpty
                         ? () {
                             Navigator.pushNamed(
                               context,
@@ -318,22 +364,22 @@ class _BooksCategoryScreenState extends State<BooksCategoryScreen> {
                         : null,
                     icon: Icon(
                       Icons.visibility,
-                      color: pdfUrl.isNotEmpty ? const Color(0xFF1E3A8A) : Colors.grey,
+                      color: pdfUrl != null && pdfUrl.isNotEmpty ? const Color(0xFF1E3A8A) : Colors.grey,
                     ),
                   ),
                   IconButton(
-                    onPressed: pdfUrl.isNotEmpty
-                        ? () => _downloadPDF(book['id']?.toString() ?? '', title, pdfUrl)
+                    onPressed: pdfUrl != null && pdfUrl.isNotEmpty
+                        ? () => _downloadPDF(libraryItem.id.toString(), title, pdfUrl!)
                         : null,
                     icon: Icon(
-                      _downloadService.isDownloaded(book['id']?.toString() ?? '')
+                      _downloadService.isDownloaded(libraryItem.id.toString())
                           ? Icons.download_done
-                          : (_downloadProgress[book['id']?.toString() ?? ''] != null
+                          : (_downloadProgress[libraryItem.id.toString()] != null
                               ? Icons.downloading
                               : Icons.download),
-                      color: _downloadService.isDownloaded(book['id']?.toString() ?? '')
+                      color: _downloadService.isDownloaded(libraryItem.id.toString())
                           ? Colors.green
-                          : (pdfUrl.isNotEmpty ? const Color(0xFF1E3A8A) : Colors.grey),
+                          : (pdfUrl != null && pdfUrl.isNotEmpty ? const Color(0xFF1E3A8A) : Colors.grey),
                     ),
                   ),
                 ],

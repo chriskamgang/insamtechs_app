@@ -15,7 +15,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadEnrollments();
+    // Use addPostFrameCallback to avoid calling setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadEnrollments();
+    });
   }
 
   Future<void> _loadEnrollments() async {
@@ -169,9 +172,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
           }
         },
         borderRadius: BorderRadius.circular(12),
-        child: Container(
+        child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Image du cours
               Container(
@@ -207,6 +211,7 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       title,
@@ -285,19 +290,23 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       'Commandé le: $date',
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.grey[500],
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 8),
               // Statut
-              Container(
+              Flexible(
+                child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 6,
@@ -315,10 +324,11 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
                 child: Text(
                   etatCommande == 0 ? 'En attente' : 'Actif',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: etatCommande == 0 ? Colors.orange : Colors.green,
                   ),
+                ),
                 ),
               ),
             ],
@@ -346,10 +356,10 @@ class _MyCoursesScreenState extends State<MyCoursesScreen> {
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E3A8A).withOpacity(0.1),
+        color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF1E3A8A).withOpacity(0.2),
+          color: const Color(0xFF1E3A8A).withValues(alpha: 0.2),
         ),
       ),
       child: Row(

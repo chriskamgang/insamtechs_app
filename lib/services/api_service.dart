@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/api_config.dart';
 
 class ApiService {
@@ -9,8 +10,17 @@ class ApiService {
 
   late Dio _dio;
   String? _token;
+  late FlutterSecureStorage _secureStorage;
 
-  void initialize() {
+  static const String _tokenKey = 'auth_token';
+  static const String _userIdKey = 'user_id';
+
+  Future<void> initialize() async {
+    _secureStorage = const FlutterSecureStorage();
+
+    // Load token from secure storage on initialization
+    await _loadToken();
+
     _dio = Dio(BaseOptions(
       baseUrl: ApiConfig.baseUrl,
       connectTimeout: Duration(milliseconds: ApiConfig.connectTimeout),
@@ -23,6 +33,15 @@ class ApiService {
     _dio.interceptors.add(_getAuthInterceptor());
     _dio.interceptors.add(_getLoggingInterceptor());
     _dio.interceptors.add(_getErrorInterceptor());
+  }
+
+  // Load token from secure storage
+  Future<void> _loadToken() async {
+    try {
+      _token = await _secureStorage.read(key: _tokenKey);
+    } catch (e) {
+      _token = null;
+    }
   }
 
   // Auth interceptor to automatically add token to requests
@@ -88,6 +107,13 @@ class ApiService {
             return;
           }
 
+          // Pour logout, ne pas lancer d'exception (l'app se déconnecte localement de toute façon)
+          if (path.contains('/logout')) {
+            print('⚠️ Logout endpoint failed, but continuing with local logout');
+            handler.resolve(error.response!);
+            return;
+          }
+
           String message = 'Unknown error';
           if (error.response!.data is Map<String, dynamic>) {
             message = error.response!.data['message'] ?? 'Server error';
@@ -102,17 +128,59 @@ class ApiService {
     );
   }
 
-  // Token management (in-memory storage)
+  // Token management with secure storage
   Future<String?> getToken() async {
-    return _token;
+    // Return cached token if available
+    if (_token != null) {
+      return _token;
+    }
+
+    // Try to load from secure storage
+    try {
+      _token = await _secureStorage.read(key: _tokenKey);
+      return _token;
+    } catch (e) {
+      return null;
+    }
   }
 
   Future<void> setToken(String token) async {
     _token = token;
+    try {
+      await _secureStorage.write(key: _tokenKey, value: token);
+    } catch (e) {
+      // If secure storage fails, at least keep in memory
+      print('Error saving token to secure storage: $e');
+    }
   }
 
   Future<void> clearToken() async {
     _token = null;
+    try {
+      await _secureStorage.delete(key: _tokenKey);
+      await _secureStorage.delete(key: _userIdKey);
+    } catch (e) {
+      print('Error clearing token from secure storage: $e');
+    }
+  }
+
+  // Save user ID for quick access
+  Future<void> saveUserId(int userId) async {
+    try {
+      await _secureStorage.write(key: _userIdKey, value: userId.toString());
+    } catch (e) {
+      print('Error saving user ID: $e');
+    }
+  }
+
+  // Get saved user ID
+  Future<int?> getUserId() async {
+    try {
+      final userIdStr = await _secureStorage.read(key: _userIdKey);
+      return userIdStr != null ? int.tryParse(userIdStr) : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   // HTTP Methods
@@ -177,7 +245,7 @@ class ApiService {
   }
 
   Future<void> clearAllData() async {
-    _token = null;
+    await clearToken();
   }
 }
 

@@ -31,6 +31,11 @@ class ExamProvider with ChangeNotifier {
   bool _isLoadingHistory = false;
   String? _historyError;
 
+  // État pour les épreuves en vedette
+  List<Map<String, dynamic>> _featuredExams = [];
+  bool _isLoadingFeatured = false;
+  String? _featuredError;
+
   // Getters pour l'examen
   Exam? get currentExam => _currentExam;
   bool get isLoadingExam => _isLoadingExam;
@@ -54,6 +59,12 @@ class ExamProvider with ChangeNotifier {
   bool get isLoadingHistory => _isLoadingHistory;
   String? get historyError => _historyError;
   bool get hasHistoryError => _historyError != null;
+
+  // Getters pour les épreuves en vedette
+  List<Map<String, dynamic>> get featuredExams => List.unmodifiable(_featuredExams);
+  bool get isLoadingFeatured => _isLoadingFeatured;
+  String? get featuredError => _featuredError;
+  bool get hasFeaturedError => _featuredError != null;
 
   // Formatage du temps
   String get formattedRemainingTime => _examService.formatTime(_remainingTime);
@@ -211,6 +222,31 @@ class ExamProvider with ChangeNotifier {
     }
 
     _isLoadingHistory = false;
+    notifyListeners();
+  }
+
+  /// Charge les épreuves en vedette
+  Future<void> loadFeaturedExams({int limit = 5}) async {
+    _isLoadingFeatured = true;
+    _featuredError = null; // Effacer l'erreur précédente
+    notifyListeners();
+
+    try {
+      final result = await _examService.getFeaturedExams(limit: limit);
+
+      if (result['success']) {
+        _featuredExams = List<Map<String, dynamic>>.from(result['exams'] ?? []);
+        _featuredError = null; // S'assurer qu'il n'y a pas d'erreur après un succès
+      } else {
+        _featuredError = result['message'];
+        _featuredExams = [];
+      }
+    } catch (e) {
+      _featuredError = 'Erreur lors du chargement des épreuves: ${e.toString()}';
+      _featuredExams = [];
+    }
+
+    _isLoadingFeatured = false;
     notifyListeners();
   }
 

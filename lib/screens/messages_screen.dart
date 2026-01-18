@@ -713,66 +713,94 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   Widget _buildBottomNavigationBar() {
     return Container(
+      height: 80,
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withValues(alpha: 0.2),
+            color: Colors.grey.withOpacity(0.3),
+            spreadRadius: 1,
             blurRadius: 10,
-            spreadRadius: 2,
           ),
         ],
       ),
-      child: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-          _navigateToPage(index);
-        },
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: const Color(0xFF1E3A8A),
-        unselectedItemColor: Colors.grey[400],
-        elevation: 0,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Accueil',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.school),
-            label: 'Cours',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.message),
-            label: 'Messages',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profil',
-          ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildNavItem(Icons.home, 'Accueil', 0),
+          _buildNavItem(Icons.school, 'Cours', 1),
+          _buildNavItem(Icons.menu_book, 'Bibliothèque', 2),
+          _buildNavItem(Icons.message, 'Messages', 3),
+          _buildNavItem(Icons.person, 'Profil', 4),
         ],
       ),
     );
   }
 
-  void _navigateToPage(int index) {
-    switch (index) {
-      case 0:
-        Navigator.pushReplacementNamed(context, '/home');
+  Widget _buildNavItem(IconData icon, String label, int index) {
+    // Determine selected index based on current route
+    int currentIndex = 0;
+    String currentRoute = ModalRoute.of(context)?.settings.name ?? '';
+
+    switch(currentRoute) {
+      case '/home':
+        currentIndex = 0;
         break;
-      case 1:
-        Navigator.pushNamed(context, '/courses');
+      case '/courses':
+        currentIndex = 1;
         break;
-      case 2:
-        // Already on messages
+      case '/library':
+        currentIndex = 2;
         break;
-      case 3:
-        Navigator.pushNamed(context, '/profile');
+      case '/messages':
+        currentIndex = 3;
+        break;
+      case '/profile':
+        currentIndex = 4;
         break;
     }
+
+    final isSelected = currentIndex == index;
+    return GestureDetector(
+      onTap: () {
+        switch (index) {
+          case 0:
+            Navigator.pushReplacementNamed(context, '/home');
+            break;
+          case 1:
+            Navigator.pushReplacementNamed(context, '/courses');
+            break;
+          case 2:
+            Navigator.pushReplacementNamed(context, '/library');
+            break;
+          case 3:
+            Navigator.pushReplacementNamed(context, '/messages');
+            break;
+          case 4:
+            Navigator.pushReplacementNamed(context, '/profile');
+            break;
+        }
+      },
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            color: isSelected ? const Color(0xFF1E3A8A) : Colors.grey,
+            size: 24,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? const Color(0xFF1E3A8A) : Colors.grey,
+              fontSize: 10,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

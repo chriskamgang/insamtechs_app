@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/library_provider.dart';
+import '../models/library_item.dart';
 import '../utils/translation_helper.dart';
 
 class FasciculesCategoryScreen extends StatefulWidget {
@@ -24,7 +25,10 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadFascicules();
+    // Use addPostFrameCallback to avoid calling setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadFascicules();
+    });
   }
 
   @override
@@ -41,8 +45,13 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
 
   void _updateFilteredFascicules() {
     final libraryProvider = context.read<LibraryProvider>();
-    _filteredFascicules = libraryProvider.searchFascicules(_searchController.text);
-    setState(() {});
+    setState(() {
+      _filteredFascicules = libraryProvider.libraryItems.where((item) {
+        if (_searchController.text.isEmpty) return true;
+        return item.title.toLowerCase().contains(_searchController.text.toLowerCase()) ||
+               item.author.toLowerCase().contains(_searchController.text.toLowerCase());
+      }).toList();
+    });
   }
 
   @override
@@ -116,13 +125,13 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
   }
 
   Widget _buildFasciculesContent(LibraryProvider libraryProvider) {
-    if (libraryProvider.isLoadingFascicules) {
+    if (libraryProvider.state == LibraryLoadingState.loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (libraryProvider.hasFasciculesError) {
+    if (libraryProvider.state == LibraryLoadingState.error) {
       return _buildErrorWidget(
-        libraryProvider.fasciculesError!,
+        libraryProvider.errorMessage ?? 'Erreur de chargement',
         _loadFascicules,
       );
     }
@@ -148,26 +157,61 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
     );
   }
 
-  Widget _buildFasciculeCard(Map<String, dynamic> fascicule) {
+  Widget _buildFasciculeCard(dynamic fascicule) {
+    // Convert dynamic to LibraryItem if needed
+    final LibraryItem libraryItem;
+    if (fascicule is LibraryItem) {
+      libraryItem = fascicule;
+    } else {
+      // If it's a map, create a LibraryItem from it
+      libraryItem = LibraryItem(
+        id: fascicule['id'] ?? 0,
+        titre: fascicule['titre'] ?? fascicule['intitule'] ?? 'Fascicule sans titre',
+        description: fascicule['description'] ?? fascicule['descriptif'] ?? '',
+        type: fascicule['type'] ?? 'Fascicule',
+        auteur: fascicule['auteur'] ?? 'Auteur inconnu',
+        lien: fascicule['lien'] ?? fascicule['pdf_url'] ?? fascicule['pdf_link'] ?? fascicule['url'] ?? '',
+        image: fascicule['image'] ?? fascicule['img'] ?? '',
+        categorie: fascicule['categorie'] ?? fascicule['category'] ?? '',
+        annee: fascicule['annee'] ?? fascicule['year'] ?? null,
+        slug: fascicule['slug'] ?? '',
+        langue: fascicule['langue'] ?? fascicule['language'] ?? '',
+        niveau: fascicule['niveau'] ?? '',
+        taille: fascicule['taille'] ?? fascicule['size'] ?? null,
+        format: fascicule['format'] ?? '',
+        motsCles: fascicule['motsCles'] ?? fascicule['keywords'] ?? '',
+        estPayant: fascicule['estPayant'] ?? fascicule['isPaid'] ?? false,
+        prix: fascicule['prix'] ?? fascicule['price'] ?? '',
+        datePublication: fascicule['datePublication'] ?? fascicule['publicationDate'] ?? '',
+        nbPages: fascicule['pages'] ?? fascicule['nb_pages'] ?? fascicule['page_count'] ?? fascicule['nombre_pages'] ?? 0,
+        editeur: fascicule['editeur'] ?? fascicule['publisher'] ?? '',
+        isbn: fascicule['isbn'] ?? '',
+        resume: fascicule['resume'] ?? fascicule['summary'] ?? '',
+        nbTelechargements: fascicule['download_count'] ?? fascicule['downloads'] ?? fascicule['nb_downloads'] ?? 0,
+        nbVues: fascicule['nbVues'] ?? fascicule['viewCount'] ?? 0,
+        estDisponible: fascicule['estDisponible'] ?? fascicule['isAvailable'] ?? true,
+        dateCreation: fascicule['dateCreation'] ?? fascicule['creationDate'] ?? '',
+        dateMiseAJour: fascicule['dateMiseAJour'] ?? fascicule['updateDate'] ?? '',
+      );
+    }
+
     final title = TranslationHelper.getTranslatedText(
-      fascicule['titre'],
+      libraryItem.title,
       defaultText: 'Fascicule sans titre',
     );
     final description = TranslationHelper.getTranslatedText(
-      fascicule['description'],
+      libraryItem.itemDescription,
       defaultText: '',
     );
     final level = TranslationHelper.getTranslatedText(
-      fascicule['niveau'],
+      libraryItem.level ?? '',
       defaultText: '',
     );
-    final semester = TranslationHelper.getTranslatedText(
-      fascicule['semestre'],
-      defaultText: '',
-    );
-    final pages = fascicule['pages'] ?? 0;
-    final pdfUrl = fascicule['pdf_url'] ?? fascicule['lien'] ?? '';
-    final downloadCount = fascicule['download_count'] ?? 0;
+    final semester = ''; // Assuming semestre is not in the model
+
+    final pages = libraryItem.pageCount;
+    final pdfUrl = libraryItem.link ?? '';
+    final downloadCount = libraryItem.downloadCount;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -177,7 +221,7 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
       ),
       child: InkWell(
         onTap: () {
-          if (pdfUrl.isNotEmpty) {
+          if (pdfUrl != null && pdfUrl.isNotEmpty) {
             Navigator.pushNamed(
               context,
               '/pdf-viewer',
@@ -206,7 +250,7 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      title,
+                      title != 'Fascicule sans titre' ? title : 'Fascicule sans titre',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -216,7 +260,7 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (pdfUrl.isNotEmpty)
+                  if (pdfUrl != null && pdfUrl.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -320,33 +364,37 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
                   // Statistiques
                   Row(
                     children: [
-                      Icon(
-                        Icons.article,
-                        size: 16,
-                        color: Colors.grey[500],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$pages pages',
-                        style: TextStyle(
-                          fontSize: 12,
+                      if (pages != null && pages > 0) ...[
+                        Icon(
+                          Icons.article,
+                          size: 16,
                           color: Colors.grey[500],
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Icon(
-                        Icons.download,
-                        size: 16,
-                        color: Colors.grey[500],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$downloadCount téléchargements',
-                        style: TextStyle(
-                          fontSize: 12,
+                        const SizedBox(width: 4),
+                        Text(
+                          '$pages pages',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                      if (pages != null && pages > 0 && downloadCount > 0) const SizedBox(width: 16),
+                      if (downloadCount > 0) ...[
+                        Icon(
+                          Icons.download,
+                          size: 16,
                           color: Colors.grey[500],
                         ),
-                      ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$downloadCount téléchargements',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
 
@@ -356,7 +404,7 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
                   Row(
                     children: [
                       IconButton(
-                        onPressed: pdfUrl.isNotEmpty
+                        onPressed: pdfUrl != null && pdfUrl.isNotEmpty
                             ? () {
                                 Navigator.pushNamed(
                                   context,
@@ -367,13 +415,23 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
                                   },
                                 );
                               }
-                            : null,
+                            : () {
+                                // Afficher un message quand le PDF n'est pas disponible
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('PDF non disponible pour "$title"'),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                              },
                         icon: Icon(
                           Icons.visibility,
-                          color: pdfUrl.isNotEmpty ? const Color(0xFF3B82F6) : Colors.grey,
+                          color: pdfUrl != null && pdfUrl.isNotEmpty ? const Color(0xFF3B82F6) : Colors.grey,
                           size: 20,
                         ),
                       ),
+                      // Masquer l'icône de téléchargement comme demandé
+                      /*
                       IconButton(
                         onPressed: () {
                           // TODO: Télécharger le fascicule
@@ -390,6 +448,7 @@ class _FasciculesCategoryScreenState extends State<FasciculesCategoryScreen> {
                           size: 20,
                         ),
                       ),
+                      */
                     ],
                   ),
                 ],

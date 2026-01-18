@@ -344,7 +344,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Prix: $prix FCFA',
+                      prix != '0' ? 'Prix: $prix FCFA' : 'Gratuit',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/video_provider.dart';
-import '../utils/translation_helper.dart';
+import '../data/mock_data.dart';
+import '../models/course.dart';
 
 class VideoCategoryScreen extends StatefulWidget {
   final String slug;
@@ -45,10 +46,15 @@ class _VideoCategoryScreenState extends State<VideoCategoryScreen> {
 
           // Trouver la catégorie dans les données de test
           final categories = videoProvider.videoCategories;
-          final category = categories.firstWhere(
-            (cat) => cat['slug'] == widget.slug,
-            orElse: () => null,
-          );
+          CourseCategory? category;
+
+          try {
+            category = categories.firstWhere(
+              (cat) => cat.slug == widget.slug,
+            );
+          } catch (e) {
+            category = null;
+          }
 
           if (category == null) {
             return const Center(
@@ -56,7 +62,11 @@ class _VideoCategoryScreenState extends State<VideoCategoryScreen> {
             );
           }
 
-          final formations = category['formations'] as List<dynamic>? ?? [];
+          // Charger les cours et filtrer par categorieId
+          final allCourses = MockData.getMockCourses();
+          final formations = allCourses
+              .where((course) => course.categorieId == category!.id)
+              .toList();
 
           if (formations.isEmpty) {
             return const Center(
@@ -80,14 +90,11 @@ class _VideoCategoryScreenState extends State<VideoCategoryScreen> {
     );
   }
 
-  Widget _buildVideoCard(Map<String, dynamic> video) {
-    final title = TranslationHelper.getTranslatedText(
-      video['intitule'],
-      defaultText: 'Vidéo sans titre',
-    );
-    final instructor = video['instructor'] ?? 'Instructeur';
-    final duration = video['duration'] ?? '00:00:00';
-    final description = video['description'] ?? '';
+  Widget _buildVideoCard(Course course) {
+    final title = course.title;
+    final instructor = course.instructor;
+    final duration = course.duree;
+    final description = course.courseDescription;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -101,7 +108,7 @@ class _VideoCategoryScreenState extends State<VideoCategoryScreen> {
             context,
             '/enhanced-video-player',
             arguments: {
-              'video': video,
+              'video': course,
               'title': title,
             },
           );
@@ -208,7 +215,7 @@ class _VideoCategoryScreenState extends State<VideoCategoryScreen> {
                           context,
                           '/enhanced-video-player',
                           arguments: {
-                            'video': video,
+                            'video': course,
                             'title': title,
                           },
                         );

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class Advertisement {
   final int id;
   final String title;
@@ -22,6 +24,31 @@ class Advertisement {
   });
 
   factory Advertisement.fromJson(Map<String, dynamic> json) {
+    // Parse features - handle both JSON string and List
+    List<String> parseFeatures(dynamic featuresData) {
+      if (featuresData == null) return <String>[];
+
+      // If it's already a List, convert it
+      if (featuresData is List) {
+        return featuresData.map((e) => e.toString()).toList();
+      }
+
+      // If it's a String, try to decode it as JSON
+      if (featuresData is String) {
+        try {
+          final decoded = jsonDecode(featuresData);
+          if (decoded is List) {
+            return decoded.map((e) => e.toString()).toList();
+          }
+        } catch (e) {
+          // If JSON decode fails, return empty list
+          return <String>[];
+        }
+      }
+
+      return <String>[];
+    }
+
     return Advertisement(
       id: json['id'] ?? 0,
       title: json['title'] ?? '',
@@ -29,10 +56,7 @@ class Advertisement {
       imageUrl: json['image_url'] ?? '',
       appName: json['app_name'] ?? '',
       downloadUrl: json['download_url'] ?? '',
-      features: (json['features'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          [],
+      features: parseFeatures(json['features']),
       order: json['order'] ?? 0,
       isActive: json['is_active'] ?? true,
     );

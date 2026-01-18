@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart';
 import '../models/course.dart';
-import '../data/mock_data.dart';
+import '../services/course_service.dart';
 import '../utils/logging_mixin.dart';
 
 enum CourseLoadingState { loading, loaded, error }
 
 class CourseProvider extends ChangeNotifier with LoggingMixin {
+  final CourseService _courseService = CourseService();
+
   CourseLoadingState _state = CourseLoadingState.loading;
   List<Course> _courses = [];
   List<Course> _featuredCourses = [];
@@ -13,6 +15,7 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
   String? _errorMessage;
   int _currentPage = 1;
   bool _hasMorePages = true;
+  int _totalCourses = 0;
 
   // Getters
   CourseLoadingState get state => _state;
@@ -23,6 +26,7 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
   bool get isLoading => _state == CourseLoadingState.loading;
   bool get hasError => _state == CourseLoadingState.error;
   bool get hasMorePages => _hasMorePages;
+  int get totalCourses => _totalCourses;
 
   /// Initialize and load initial data
   Future<void> initialize() async {
@@ -34,23 +38,27 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
     try {
       logProviderInfo('Loading initial data (featured courses, categories, courses)');
 
-      // Simulate loading delay for realistic UX
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Load featured courses (limit 6 for home screen)
+      final featuredResponse = await _courseService.getFeaturedCourses(limit: 6);
+      _featuredCourses = featuredResponse;
 
-      // Load featured courses and categories from mock data
-      _featuredCourses = MockData.getFeaturedCourses();
-      _categories = MockData.getMockCategories();
-      _courses = MockData.getMockCourses();
+      // Load categories
+      final categoriesResponse = await _courseService.getCategories();
+      _categories = categoriesResponse;
 
-      // Mock pagination
-      _hasMorePages = false;
-      _currentPage = 1;
+      // Load initial page of courses
+      final coursesResponse = await _courseService.getCourses(page: 1);
+      _courses = coursesResponse.data;
+      _currentPage = coursesResponse.currentPage;
+      _hasMorePages = coursesResponse.currentPage < coursesResponse.lastPage;
+      _totalCourses = coursesResponse.total;
 
       logProviderStateChange('loading', 'loaded');
       logProviderSuccess('CourseProvider initialization completed', data: {
         'coursesCount': _courses.length,
         'featuredCoursesCount': _featuredCourses.length,
         'categoriesCount': _categories.length,
+        'totalCourses': _totalCourses,
       });
       _setState(CourseLoadingState.loaded);
     } catch (e) {
@@ -70,14 +78,18 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
         _courses.clear();
       }
 
-      // Simulate loading delay
-      await Future.delayed(const Duration(milliseconds: 300));
+      final coursesResponse = await _courseService.getCourses(page: _currentPage);
 
       if (refresh) {
-        _courses = MockData.getMockCourses();
+        _courses = coursesResponse.data;
+      } else {
+        _courses.addAll(coursesResponse.data);
       }
 
-      _hasMorePages = false;
+      _currentPage = coursesResponse.currentPage;
+      _hasMorePages = coursesResponse.currentPage < coursesResponse.lastPage;
+      _totalCourses = coursesResponse.total;
+
       notifyListeners();
     } catch (e) {
       throw Exception('Erreur lors du chargement des cours: ${e.toString()}');
@@ -89,8 +101,10 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
     if (!_hasMorePages || _state == CourseLoadingState.loading) return;
 
     try {
+      _currentPage++;
       await loadCourses(refresh: false);
     } catch (e) {
+      _currentPage--; // Revert page increment on error
       _setError(e.toString());
     }
   }
@@ -98,24 +112,14 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
   /// Load featured courses for home screen
   Future<void> loadFeaturedCourses() async {
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
-      _featuredCourses = MockData.getFeaturedCourses();
+      final featuredCourses = await _courseService.getFeaturedCourses(limit: 6);
+      _featuredCourses = featuredCourses;
       notifyListeners();
     } catch (e) {
       throw Exception('Erreur lors du chargement des cours populaires: ${e.toString()}');
     }
   }
 
-  /// Load course categories
-  Future<void> loadCategories() async {
-    try {
-      await Future.delayed(const Duration(milliseconds: 300));
-      _categories = MockData.getMockCategories();
-      notifyListeners();
-    } catch (e) {
-      throw Exception('Erreur lors du chargement des catégories: ${e.toString()}');
-    }
-  }
 
   /// Search courses
   Future<void> searchCourses(String query) async {
@@ -128,10 +132,9 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
     _clearError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
-      final searchResults = MockData.searchCourses(query);
+      final searchResults = await _courseService.searchCourses(query);
       _courses = searchResults;
-      _hasMorePages = false;
+      _hasMorePages = false; // Search results don't have pagination
       _setState(CourseLoadingState.loaded);
     } catch (e) {
       _setError('Erreur lors de la recherche: ${e.toString()}');
@@ -145,10 +148,11 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
     _clearError();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
-      final filteredCourses = MockData.getCoursesByCategory(categorySlug);
-      _courses = filteredCourses;
-      _hasMorePages = false;
+      final coursesResponse = await _courseService.getCoursesByCategory(categorySlug);
+      _courses = coursesResponse.data;
+      _currentPage = coursesResponse.currentPage;
+      _hasMorePages = coursesResponse.currentPage < coursesResponse.lastPage;
+      _totalCourses = coursesResponse.total;
       _setState(CourseLoadingState.loaded);
     } catch (e) {
       _setError('Erreur lors du filtrage par catégorie: ${e.toString()}');
@@ -160,8 +164,7 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
   Future<Course?> getCourseBySlug(String slug) async {
     logProviderInfo('Getting course by slug', data: {'slug': slug});
     try {
-      await Future.delayed(const Duration(milliseconds: 300));
-      final course = MockData.getCourseBySlug(slug);
+      final course = await _courseService.getCourseBySlug(slug);
       if (course != null) {
         logProviderSuccess('Course retrieved successfully', data: {
           'slug': slug,
@@ -185,6 +188,21 @@ class CourseProvider extends ChangeNotifier with LoggingMixin {
   /// Refresh all data
   Future<void> refresh() async {
     await initialize();
+  }
+
+  /// Load categories
+  Future<void> loadCategories() async {
+    _setState(CourseLoadingState.loading);
+    _clearError();
+
+    try {
+      final categories = await _courseService.getCategories();
+      _categories = categories;
+      _setState(CourseLoadingState.loaded);
+    } catch (e) {
+      _setError('Erreur lors du chargement des catégories: ${e.toString()}');
+      _setState(CourseLoadingState.error);
+    }
   }
 
   /// Clear error message

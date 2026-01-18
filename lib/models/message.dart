@@ -208,15 +208,31 @@ class Conversation {
   });
 
   factory Conversation.fromJson(Map<String, dynamic> json) {
+    // Safely parse participant_ids
+    List<String> participantIds = [];
+    if (json['participant_ids'] != null) {
+      try {
+        if (json['participant_ids'] is List) {
+          participantIds = (json['participant_ids'] as List).map((e) => e.toString()).toList();
+        } else if (json['participant_ids'] is String) {
+          // If it's a comma-separated string
+          participantIds = (json['participant_ids'] as String).split(',').map((e) => e.trim()).toList();
+        }
+      } catch (e) {
+        print('Error parsing participant_ids: $e');
+        participantIds = [];
+      }
+    }
+
     return Conversation(
       id: json['id']?.toString() ?? '',
       title: json['title'] ?? '',
-      participantIds: (json['participant_ids'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      participantIds: participantIds,
       lastMessageId: json['last_message_id']?.toString(),
       lastMessage: json['last_message'] != null ? Message.fromJson(json['last_message']) : null,
       createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at'] ?? '') ?? DateTime.now(),
-      unreadCount: json['unread_count'] ?? 0,
+      unreadCount: json['unread_count'] is int ? json['unread_count'] : 0,
       isGroup: json['is_group'] ?? false,
       avatarUrl: json['avatar_url'],
       isMuted: json['is_muted'] ?? false,

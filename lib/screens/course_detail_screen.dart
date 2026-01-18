@@ -9,6 +9,7 @@ import '../providers/course_provider.dart';
 import '../providers/enrollment_provider.dart';
 import '../services/logger_service.dart';
 import 'enhanced_video_player_screen.dart';
+import 'google_drive_video_player.dart';
 
 class CourseDetailScreen extends StatefulWidget {
   final String courseTitle;
@@ -89,6 +90,9 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
           _course = course;
           _isLoading = false;
         });
+
+        // Removed automatic video playback - now handled as thumbnail in overview
+        // _playFirstVideo();
 
         // Check enrollment status
         logger.logInfo('Checking enrollment status', screen: 'CourseDetailScreen');
@@ -459,7 +463,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  '$price€',
+                  price != '0' ? '$price€' : 'Gratuit',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: screenWidth * 0.045,
@@ -609,6 +613,98 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // First Course Video Section - This replaces the blue box before the title
+          if (_getFirstVideo() != null) ...[
+            Text(
+              'Première vidéo du cours',
+              style: TextStyle(
+                fontSize: screenWidth * 0.05,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              height: 200,
+              decoration: BoxDecoration(
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Video thumbnail or placeholder
+                  if (_getFirstVideo()?.thumbnailUrl != null && _getFirstVideo()!.thumbnailUrl.isNotEmpty)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        _getFirstVideo()!.thumbnailUrl,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: const Color(
+                              0xFF1E3A8A,
+                            ).withValues(alpha: 0.1),
+                            child: const Center(
+                              child: Icon(
+                                Icons.video_library,
+                                size: 48,
+                                color: Color(0xFF1E3A8A),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  else
+                    Container(
+                      color: const Color(0xFF1E3A8A).withValues(alpha: 0.1),
+                      child: const Center(
+                        child: Icon(
+                          Icons.video_library,
+                          size: 48,
+                          color: Color(0xFF1E3A8A),
+                        ),
+                      ),
+                    ),
+                  // Play button overlay
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      logger.logUserGesture('tap', 'first_video_play_button', screen: 'CourseDetailScreen', data: {
+                        'courseId': course?.id,
+                        'videoId': _getFirstVideo()?.id,
+                        'videoTitle': _getFirstVideo()?.title,
+                      });
+                      _playVideo(_getFirstVideo()!);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E3A8A).withValues(alpha: 0.9),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
           // Intro Video Section
           if (course?.hasIntroVideo == true) ...[
             Text(
@@ -744,6 +840,9 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
   }
 
   Widget _buildCurriculumTab(double screenWidth, Course? course) {
+    final authProvider = context.watch<AuthProvider>();
+    final isAuthenticated = authProvider.isAuthenticated;
+
     if (course == null || course.chapters.isEmpty) {
       return Center(
         child: Column(
@@ -820,36 +919,176 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
 
   Widget _buildVideoTile(double screenWidth, Video video) {
     return ListTile(
-      leading: Icon(
-        video.isFree ? Icons.play_circle : Icons.lock,
-        color: video.isFree ? Colors.green : Colors.grey,
-      ),
+      leading: video.thumbnailUrl.isNotEmpty
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 80,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      video.thumbnailUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey[300],
+                          child: Icon(
+                            Icons.video_library,
+                            color: Colors.grey[600],
+                            size: 30,
+                          ),
+                        );
+                      },
+                    ),
+                    // Play icon overlay
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                    // Badge for invalid URL
+                    if (!video.hasValidUrl)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Bientôt',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            )
+          : Container(
+              width: 80,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: Icon(
+                      Icons.video_library,
+                      color: video.hasValidUrl ? Colors.green : Colors.grey[600],
+                      size: 30,
+                    ),
+                  ),
+                  if (!video.hasValidUrl)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Bientôt',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
       title: Text(video.title, style: TextStyle(fontSize: screenWidth * 0.035)),
       subtitle: Text(
         video.duration,
         style: TextStyle(fontSize: screenWidth * 0.03, color: Colors.grey[600]),
       ),
-      trailing: video.isFree
-          ? const Icon(Icons.play_arrow, color: Color(0xFF1E3A8A))
-          : const Icon(Icons.lock, color: Colors.grey),
-      onTap: video.isFree
-          ? () {
-              logger.logUserGesture('tap', 'video_tile', screen: 'CourseDetailScreen', data: {
-                'videoTitle': video.title,
-                'videoId': video.id,
-                'isFree': video.isFree,
-                'duration': video.duration,
-              });
-              _playVideo(video);
-            }
-          : () {
-              logger.logUserGesture('tap', 'locked_video_tile', screen: 'CourseDetailScreen', data: {
-                'videoTitle': video.title,
-                'videoId': video.id,
-                'isFree': video.isFree,
-              });
-            },
+      trailing: Icon(
+        Icons.play_arrow,
+        color: video.hasValidUrl ? const Color(0xFF1E3A8A) : Colors.grey,
+      ),
+      onTap: () {
+        logger.logUserGesture('tap', 'video_tile', screen: 'CourseDetailScreen', data: {
+          'videoTitle': video.title,
+          'videoId': video.id,
+          'isFree': video.isFree,
+          'duration': video.duration,
+        });
+
+        // Check if user is authenticated but remove enrollment requirement
+        final authProvider = context.read<AuthProvider>();
+
+        if (!authProvider.isAuthenticated) {
+          Navigator.pushNamed(context, '/signin');
+          return;
+        }
+
+        _playVideo(video);
+      },
     );
+  }
+
+  // Méthode pour obtenir la première vidéo du cours
+  Video? _getFirstVideo() {
+    if (_course != null && _course!.chapters != null) {
+      for (var chapter in _course!.chapters!) {
+        if (chapter.videos != null && chapter.videos!.isNotEmpty) {
+          // Trouver la première vidéo avec une URL valide
+          for (var video in chapter.videos!) {
+            if (video.hasValidUrl) {
+              return video; // Retourner la première vidéo trouvée
+            }
+          }
+        }
+      }
+    }
+    return null; // Aucune vidéo trouvée
+  }
+
+  // Méthode pour jouer automatiquement la première vidéo du cours
+  void _playFirstVideo() {
+    Video? firstVideo = _getFirstVideo();
+    if (firstVideo != null) {
+      logger.logUserAction('auto_play_first_video', screen: 'CourseDetailScreen', data: {
+        'videoId': firstVideo.id,
+        'videoTitle': firstVideo.title,
+        'courseId': _course!.id,
+        'courseTitle': _course!.title,
+      });
+      _playVideo(firstVideo);
+    }
   }
 
   Widget _buildExamTab(double screenWidth, Course? course) {
@@ -1498,38 +1737,98 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       'duration': video.duration,
       'isFree': video.isFree,
       'courseId': _course?.id,
+      'hasValidUrl': video.hasValidUrl,
+      'videoUrl': video.url,
     });
 
     // Vérifier si l'utilisateur est connecté pour les vidéos payantes
-    if (!video.isFree && !_isEnrolled) {
+    // Dans l'app mobile, tous les utilisateurs connectés peuvent regarder toutes les vidéos
+    final authProvider = context.read<AuthProvider>();
+
+    // Vérification plus robuste: check both isAuthenticated AND user != null
+    final hasUser = authProvider.user != null && authProvider.user!.id != null;
+
+    logger.logInfo('Auth check for video playback', screen: 'CourseDetailScreen', data: {
+      'isAuthenticated': authProvider.isAuthenticated,
+      'hasUser': hasUser,
+      'userId': authProvider.user?.id,
+      'authStatus': authProvider.status.toString(),
+    });
+
+    if (!hasUser) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vous devez être inscrit à ce cours pour accéder à cette vidéo'),
+        SnackBar(
+          content: const Text('Veuillez vous connecter pour regarder cette vidéo'),
           backgroundColor: Colors.orange,
+          action: SnackBarAction(
+            label: 'Se connecter',
+            onPressed: () {
+              Navigator.pushNamed(context, '/signin');
+            },
+          ),
         ),
       );
       return;
     }
 
-    // Naviguer vers le lecteur vidéo
-    if (video.url != null && video.url!.isNotEmpty) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => EnhancedVideoPlayerScreen(
-            video: video,
-            title: video.title,
+    // Vérifier si la vidéo a une URL valide
+    if (!video.hasValidUrl) {
+      logger.logWarning('Video has no valid URL', screen: 'CourseDetailScreen', data: {
+        'videoId': video.id,
+        'videoTitle': video.title,
+        'urlValue': video.url,
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '⚠️ Vidéo non disponible',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'La vidéo "${video.title}" n\'a pas encore été uploadée sur le serveur.',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {},
           ),
         ),
       );
+      return;
+    }
+
+    // Déterminer le lecteur vidéo approprié selon l'URL
+    Widget playerWidget;
+    if (video.url != null && video.url!.contains('drive.google.com')) {
+      playerWidget = GoogleDriveVideoPlayer(
+        video: video,
+        title: video.title,
+      );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('URL de la vidéo non disponible'),
-          backgroundColor: Colors.red,
-        ),
+      playerWidget = EnhancedVideoPlayerScreen(
+        video: video,
+        title: video.title,
       );
     }
+
+    // Naviguer vers le lecteur vidéo
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => playerWidget,
+      ),
+    );
   }
 
   void _playIntroVideo(String videoUrl) {
@@ -1549,14 +1848,25 @@ class _CourseDetailScreenState extends State<CourseDetailScreen>
       gratuit: true,
     );
 
-    // Utiliser le même lecteur vidéo
+    // Déterminer le lecteur vidéo approprié selon l'URL
+    Widget playerWidget;
+    if (videoUrl.contains('drive.google.com')) {
+      playerWidget = GoogleDriveVideoPlayer(
+        video: introVideo,
+        title: 'Vidéo introductive - ${_course?.title ?? widget.courseTitle}',
+      );
+    } else {
+      playerWidget = EnhancedVideoPlayerScreen(
+        video: introVideo,
+        title: 'Vidéo introductive - ${_course?.title ?? widget.courseTitle}',
+      );
+    }
+
+    // Naviguer vers le lecteur vidéo
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => EnhancedVideoPlayerScreen(
-          video: introVideo,
-          title: 'Vidéo introductive - ${_course?.title ?? widget.courseTitle}',
-        ),
+        builder: (context) => playerWidget,
       ),
     );
   }

@@ -1,30 +1,21 @@
 import 'package:dio/dio.dart';
-import '../config/environment.dart';
 import '../models/exam.dart';
 import '../models/exam_attempt.dart';
 import '../models/certificate.dart';
+import 'api_service.dart';
 
 class ExamService {
   static final ExamService _instance = ExamService._internal();
   factory ExamService() => _instance;
 
-  final Dio _dio = Dio();
-  final String baseUrl = EnvironmentConfig.apiBaseUrl;
+  final ApiService _apiService = ApiService();
 
-  ExamService._internal() {
-    _dio.options.baseUrl = baseUrl;
-    _dio.options.connectTimeout = const Duration(seconds: 30);
-    _dio.options.receiveTimeout = const Duration(seconds: 30);
-    _dio.options.headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-  }
+  ExamService._internal();
 
   /// Récupère un examen pour une formation donnée
   Future<Map<String, dynamic>> getExamForFormation(int formationId, int userId) async {
     try {
-      final response = await _dio.get(
+      final response = await _apiService.get(
         '/examens/formation/$formationId',
         queryParameters: {'userId': userId},
       );
@@ -46,10 +37,65 @@ class ExamService {
     }
   }
 
+  /// Récupère les meilleures épreuves
+  Future<Map<String, dynamic>> getFeaturedExams({int limit = 5}) async {
+    print('🔵 [ExamService] getFeaturedExams() - Starting with limit: $limit');
+    try {
+      final response = await _apiService.get(
+        '/examens/featured',
+        queryParameters: {'limit': limit},
+      );
+
+      print('✅ [ExamService] getFeaturedExams() - Success');
+      print('📊 [ExamService] getFeaturedExams() - Response: ${response.data}');
+
+      // Vérifier si la réponse est une chaîne (HTML) au lieu d'un objet Map
+      if (response.data is String) {
+        print('⚠️ [ExamService] getFeaturedExams() - Received HTML response instead of JSON, returning empty list');
+        return {
+          'success': true,
+          'exams': [],
+          'message': 'Endpoint non disponible',
+        };
+      }
+
+      return {
+        'success': true,
+        'exams': response.data['exams'] ?? response.data['data'] ?? [],
+      };
+    } on DioException catch (e) {
+      print('❌ [ExamService] getFeaturedExams() - DioException: ${e.response?.statusCode}');
+      print('📊 [ExamService] getFeaturedExams() - Error message: ${e.response?.data}');
+
+      // Si l'endpoint n'existe pas (404), retourner un tableau vide sans erreur
+      if (e.response?.statusCode == 404) {
+        print('⚠️ [ExamService] getFeaturedExams() - Endpoint not found, returning empty list');
+        return {
+          'success': true,
+          'exams': [],
+          'message': 'Endpoint non disponible',
+        };
+      }
+
+      return {
+        'success': false,
+        'message': e.response?.data['message'] ?? 'Erreur lors de la récupération des épreuves',
+        'exams': [],
+      };
+    } catch (e) {
+      print('❌ [ExamService] getFeaturedExams() - Exception: ${e.toString()}');
+      return {
+        'success': false,
+        'message': 'Erreur de connexion: ${e.toString()}',
+        'exams': [],
+      };
+    }
+  }
+
   /// Commence un examen
   Future<Map<String, dynamic>> startExam(int examenId, int userId) async {
     try {
-      final response = await _dio.post(
+      final response = await _apiService.post(
         '/examens/$examenId/commencer',
         data: {
           'user_id': userId,
@@ -80,7 +126,7 @@ class ExamService {
     List<UserAnswer> reponses,
   ) async {
     try {
-      final response = await _dio.post(
+      final response = await _apiService.post(
         '/examens/tentatives/$tentativeId/soumettre',
         data: {
           'user_id': userId,
@@ -108,7 +154,7 @@ class ExamService {
   /// Récupère le résultat détaillé d'un examen
   Future<Map<String, dynamic>> getExamResult(int tentativeId, int userId) async {
     try {
-      final response = await _dio.get(
+      final response = await _apiService.get(
         '/examens/tentatives/$tentativeId/resultat',
         queryParameters: {'userId': userId},
       );
@@ -133,7 +179,7 @@ class ExamService {
   /// Vérifie le statut d'une tentative d'examen
   Future<Map<String, dynamic>> getAttemptStatus(int tentativeId, int userId) async {
     try {
-      final response = await _dio.get('/examens/tentatives/$tentativeId/statut/$userId');
+      final response = await _apiService.get('/examens/tentatives/$tentativeId/statut/$userId');
 
       return {
         'success': true,
@@ -155,7 +201,7 @@ class ExamService {
   /// Récupère l'historique des tentatives pour un examen
   Future<Map<String, dynamic>> getExamHistory(int examenId, int userId) async {
     try {
-      final response = await _dio.get(
+      final response = await _apiService.get(
         '/examens/$examenId/historique',
         queryParameters: {'userId': userId},
       );
@@ -223,7 +269,7 @@ class ExamService {
   /// Récupère le certificat pour une tentative d'examen réussie
   Future<Map<String, dynamic>> getCertificate(int tentativeId, int userId) async {
     try {
-      final response = await _dio.get(
+      final response = await _apiService.get(
         '/certificats/tentative/$tentativeId',
         queryParameters: {'userId': userId},
       );
@@ -248,13 +294,33 @@ class ExamService {
   /// Récupère tous les certificats d'un utilisateur
   Future<Map<String, dynamic>> getUserCertificates(int userId) async {
     try {
-      final response = await _dio.get('/certificats/user/$userId');
+      final response = await _apiService.get('/certificats/user/$userId');
+
+      // Vérifier si la réponse est une chaîne (HTML) au lieu d'un objet Map
+      if (response.data is String) {
+        print('⚠️ [ExamService] getUserCertificates() - Received HTML response instead of JSON');
+        return {
+          'success': false,
+          'data': [],
+          'message': 'Les certificats ne sont pas disponibles actuellement',
+        };
+      }
 
       return {
         'success': true,
         'data': response.data,
       };
     } on DioException catch (e) {
+      // Vérifier si la réponse est une erreur HTML
+      if (e.response?.data is String) {
+        print('⚠️ [ExamService] getUserCertificates() - Received HTML error response');
+        return {
+          'success': false,
+          'message': 'Les certificats ne sont pas disponibles actuellement',
+          'data': [],
+        };
+      }
+
       return {
         'success': false,
         'message': e.response?.data['message'] ?? 'Erreur lors de la récupération des certificats',
@@ -270,7 +336,7 @@ class ExamService {
   /// Vérifie la validité d'un certificat par son code
   Future<Map<String, dynamic>> verifyCertificate(String certificateCode) async {
     try {
-      final response = await _dio.get('/certificats/verify/$certificateCode');
+      final response = await _apiService.get('/certificats/verify/$certificateCode');
 
       return {
         'success': true,

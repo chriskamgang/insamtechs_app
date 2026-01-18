@@ -15,12 +15,16 @@ class EnrollmentService {
     required int userId,
   }) async {
     try {
-      // L'API backend attend user_id et formation_id
+      // Mobile: Inscription gratuite et automatique
+      // Web: Passe par le système de commande/paiement
       final response = await _apiService.post(
         ApiConfig.commanderFormationEndpoint,
         data: {
           'user_id': userId,
           'formation_id': formationId,
+          'platform': 'mobile',  // Indique que c'est l'app mobile
+          'auto_validate': true,  // Validation automatique sans paiement
+          'free_enrollment': true,  // Inscription gratuite
         },
       );
 
